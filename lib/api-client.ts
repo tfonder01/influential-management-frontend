@@ -105,4 +105,18 @@ export const apiClient = {
     if (response.status === 204) return undefined as T
     return response.json() as Promise<T>
   },
+
+  /** For binary endpoints (e.g. file downloads) that don't return JSON. */
+  async requestBlob(path: string, init: RequestInit = {}, retry = true): Promise<Blob> {
+    if (!accessToken) await refresh()
+    const headers = new Headers(init.headers)
+    headers.set("Authorization", `Bearer ${accessToken}`)
+    const response = await fetch(`${API_URL}${path}`, { ...init, headers, credentials: "include" })
+    if (response.status === 401 && retry) {
+      await refresh()
+      return this.requestBlob(path, init, false)
+    }
+    if (!response.ok) throw await parseError(response)
+    return response.blob()
+  },
 }

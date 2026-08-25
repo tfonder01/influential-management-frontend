@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -17,6 +17,7 @@ import {
   User,
   Calendar,
   RefreshCw,
+  Loader2,
 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { StatusBadge } from "@/components/status-badge"
@@ -28,6 +29,7 @@ import type { Comment } from "@/lib/types"
 import { getRecordWorkspace, isOperationsRecord } from "@/lib/record-workspaces"
 import { WorkspaceBadge } from "@/components/workspace-badge"
 import { reportingPeriodLabel } from "@/lib/reporting-period"
+import { getRecordDetail, downloadFileApi, isApiClientError } from "@/lib/records-api"
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   created: FileText,
@@ -41,17 +43,60 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
 
 export default function RecordDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const { records, comments, activity, updateRecordStatus, archiveRecord, restoreRecord, addComment, currentUser, role, showToast, locations } =
-    useApp()
+  const {
+    records,
+    comments,
+    activity,
+    updateRecordStatus,
+    archiveRecord,
+    restoreRecord,
+    addComment,
+    currentUser,
+    role,
+    showToast,
+    locations,
+    isDemoMode,
+    recordsLoading,
+    upsertRecord,
+    loadRecordComments,
+  } = useApp()
   const router = useRouter()
 
   const record = records.find((r) => r.id === id)
   const [commentText, setCommentText] = useState("")
+  const [detailLoading, setDetailLoading] = useState(!isDemoMode)
+  const [detailError, setDetailError] = useState<string | null>(null)
 
-  if (!record) {
+  useEffect(() => {
+    if (isDemoMode) return
+    let cancelled = false
+    setDetailLoading(true)
+    setDetailError(null)
+    getRecordDetail(id)
+      .then((detail) => { if (!cancelled) upsertRecord(detail.record) })
+      .catch((error) => {
+        if (cancelled) return
+        setDetailError(isApiClientError(error) ? error.message : "This record could not be loaded.")
+      })
+      .finally(() => { if (!cancelled) setDetailLoading(false) })
+    loadRecordComments(id)
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, isDemoMode])
+
+  if (!isDemoMode && (detailLoading || (recordsLoading && !record))) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <p className="text-sm">Loading record…</p>
+      </div>
+    )
+  }
+
+  if (!record || detailError) {
     return (
       <div className="flex flex-col items-center gap-4 py-16">
-        <p className="text-muted-foreground">Record not found.</p>
+        <p className="text-muted-foreground">{detailError ?? "Record not found."}</p>
         <Button render={<Link href="/records" />} nativeButton={false} variant="outline" size="sm">
             Back to Records
         </Button>
@@ -79,6 +124,19 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
     }
     addComment(comment)
     setCommentText("")
+  }
+
+  const handleDownload = async (name: string) => {
+    const attachment = record.attachments?.find((a) => a.name === name)
+    if (!attachment) {
+      showToast(`Download ready: ${name}`)
+      return
+    }
+    try {
+      await downloadFileApi(attachment.fileId, attachment.name)
+    } catch (error) {
+      showToast(isApiClientError(error) ? error.message : "Download failed. Please try again.")
+    }
   }
 
   const isArchived = record.status === "Archived"
@@ -240,7 +298,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                   </div>
                   <button
                     type="button"
-                    onClick={() => showToast(`Download ready: ${name}`)}
+                    onClick={() => handleDownload(name)}
                     className="flex min-h-10 w-full shrink-0 items-center justify-center gap-1 rounded-md px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 sm:w-auto sm:px-2 sm:py-1"
                   >
                     <Download className="h-3.5 w-3.5" />
@@ -408,26 +466,15 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
               )}
 
               {role !== "owner" && !isArchived && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full justify-start gap-2"
-                    onClick={() => showToast("Editing is not available in this prototype")}
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    Edit Record
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full justify-start gap-2 text-muted-foreground"
-                    onClick={() => archiveRecord(id)}
-                  >
-                    <Archive className="h-4 w-4" />
-                    Archive Record
-                  </Button>
-                </>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start gap-2"
+                  onClick={() => showToast("Editing is not available in this prototype")}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Edit Record
+                </Button>
               )}
 
               {role !== "owner" && isArchived && (

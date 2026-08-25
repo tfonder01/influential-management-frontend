@@ -19,10 +19,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { CheckCircle2, File, Info, MapPin, Upload, X } from "lucide-react"
+import { AlertTriangle, CheckCircle2, File, Loader2, MapPin, Upload, X } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { CLASSROOM_AGE_GROUPS, COMPLIANCE_CATEGORIES, OPERATIONS_RECORD_TYPES } from "@/lib/mock-data"
 import { MONTH_OPTIONS, monthName, reportingPeriodLabel, startOfWeek } from "@/lib/reporting-period"
+import { uploadFileApi, isApiClientError } from "@/lib/records-api"
 import type {
   ClassroomAgeGroup,
   ComplianceCategory,
@@ -169,11 +170,12 @@ function relatedReference(form: UploadForm) {
 }
 
 export function UploadModal({ open, onClose, defaultLocationId, defaultWorkspace }: UploadModalProps) {
-  const { addRecord, currentUser, role, locations, isDemoMode } = useApp()
+  const { addRecord, createProductionRecord, currentUser, role, locations, isDemoMode } = useApp()
   const showLocationPicker = role === "owner" || locations.length > 1
   const initialLocationId = defaultLocationId ?? (showLocationPicker ? "" : locations[0]?.id ?? "")
   const [submitted, setSubmitted] = useState(false)
-  const [notAvailable, setNotAvailable] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState("")
   const [form, setForm] = useState(() => createInitialForm(initialLocationId, defaultWorkspace ?? ""))
 
   const generatedTitle = generateRecordTitle(form)
@@ -261,47 +263,91 @@ export function UploadModal({ open, onClose, defaultLocationId, defaultWorkspace
     setForm((current) => ({ ...current, file, fileError: validateFile(file) }))
   }
 
-  const handleSubmit = () => {
-    if (!canSubmit) return
+  const handleSubmit = async () => {
+    if (!canSubmit || submitting) return
 
-    if (!isDemoMode) {
-      // Compliance/Operations persistence endpoints are not implemented on the backend yet.
-      // Keep the UI honest instead of pretending the record was saved.
-      setNotAvailable(true)
+    if (isDemoMode) {
+      const now = new Date().toISOString().split("T")[0]
+      addRecord({
+        id: `rec_${Date.now()}`,
+        title: recordTitle,
+        locationId: form.locationId,
+        category: form.workspace === "operations" ? "Operations" : (form.complianceCategory as ComplianceCategory),
+        workspace: form.workspace as RecordWorkspace,
+        recordType: form.workspace === "operations" && form.operationsType ? form.operationsType : undefined,
+        status: "New",
+        uploadedBy: currentUser.name,
+        uploadedById: currentUser.id,
+        uploadDate: form.date || now,
+        lastUpdated: now,
+        description: form.description,
+        fileNames: form.file ? [form.file.name] : [],
+        tags: [],
+        relatedRef: relatedReference(form),
+        classroomAgeGroup: form.classroomAgeGroup || undefined,
+        area: form.area.trim() || undefined,
+        observationMonth:
+          form.complianceCategory === "Classroom Observations" && form.cadence === "MONTHLY" && form.month && form.year
+            ? `${form.year}-${form.month}`
+            : undefined,
+        reportingPeriod: form.cadence !== "NONE" ? periodFromForm(form) : undefined,
+      })
+      setSubmitted(true)
       return
     }
 
-    const now = new Date().toISOString().split("T")[0]
-    addRecord({
-      id: `rec_${Date.now()}`,
-      title: recordTitle,
-      locationId: form.locationId,
-      category: form.workspace === "operations" ? "Operations" : (form.complianceCategory as ComplianceCategory),
-      workspace: form.workspace as RecordWorkspace,
-      recordType: form.workspace === "operations" && form.operationsType ? form.operationsType : undefined,
-      status: "New",
-      uploadedBy: currentUser.name,
-      uploadedById: currentUser.id,
-      uploadDate: form.date || now,
-      lastUpdated: now,
-      description: form.description,
-      fileNames: form.file ? [form.file.name] : [],
-      tags: [],
-      relatedRef: relatedReference(form),
-      classroomAgeGroup: form.classroomAgeGroup || undefined,
-      area: form.area.trim() || undefined,
-      observationMonth:
-        form.complianceCategory === "Classroom Observations" && form.cadence === "MONTHLY" && form.month && form.year
-          ? `${form.year}-${form.month}`
-          : undefined,
-      reportingPeriod: form.cadence !== "NONE" ? periodFromForm(form) : undefined,
-    })
-    setSubmitted(true)
+    setSubmitting(true)
+    setSubmitError("")
+
+    let fileId: string | undefined
+    if (form.file) {
+      try {
+        const uploaded = await uploadFileApi(form.file, form.locationId)
+        fileId = uploaded.id
+      } catch (error) {
+        setSubmitting(false)
+        setSubmitError(isApiClientError(error) ? error.message : "File upload failed. Please try again.")
+        return
+      }
+    }
+
+    try {
+      await createProductionRecord({
+        locationId: form.locationId,
+        workspace: form.workspace as RecordWorkspace,
+        complianceCategory: form.workspace === "compliance" ? (form.complianceCategory as ComplianceCategory) : undefined,
+        operationsType: form.workspace === "operations" ? (form.operationsType as OperationsRecordType) : undefined,
+        title: recordTitle,
+        customTitle: form.useCustomTitle,
+        recordType: form.recordType || undefined,
+        classroomAgeGroup: form.classroomAgeGroup || undefined,
+        area: form.area.trim() || undefined,
+        referenceLabel: relatedReference(form),
+        recordDate: form.date,
+        description: form.description || undefined,
+        reportingPeriod: form.cadence !== "NONE" ? periodFromForm(form) : undefined,
+        fileId,
+      })
+      setSubmitted(true)
+    } catch (error) {
+      // The file (if any) has already been uploaded and safely stored under this org/location by this
+      // point; it is simply not yet attached to a record. We surface the failure clearly rather than
+      // silently discarding it, and leave the metadata in place — an unattached file is harmless and
+      // can be cleaned up later, whereas guessing at automatic deletion here risks removing a file the
+      // user still intends to attach after fixing the record fields and retrying.
+      setSubmitError(
+        isApiClientError(error)
+          ? error.message
+          : "The record could not be saved. Please review the form and try again."
+      )
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleClose = () => {
     setSubmitted(false)
-    setNotAvailable(false)
+    setSubmitError("")
     setForm(createInitialForm(initialLocationId, defaultWorkspace ?? ""))
     onClose()
   }
@@ -322,20 +368,6 @@ export function UploadModal({ open, onClose, defaultLocationId, defaultWorkspace
               </p>
             </div>
             <Button onClick={handleClose} className="mt-2">Done</Button>
-          </div>
-        ) : notAvailable ? (
-          <div className="flex flex-col items-center gap-4 py-8 text-center [animation:page-enter_200ms_ease-out_both]">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 ring-1 ring-blue-100">
-              <Info className="h-7 w-7 text-blue-600" />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-foreground">Not yet available</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Compliance and Operations record submission is not yet connected to the production backend.
-                Your form is complete and validated; this workflow will be enabled in an upcoming release.
-              </p>
-            </div>
-            <Button onClick={handleClose} className="mt-2">Close</Button>
           </div>
         ) : (
           <>
@@ -673,9 +705,19 @@ export function UploadModal({ open, onClose, defaultLocationId, defaultWorkspace
               </div>
             </div>
 
+            {submitError && (
+              <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive [animation:page-enter_150ms_ease-out_both]">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{submitError}</span>
+              </div>
+            )}
+
             <DialogFooter>
-              <Button variant="outline" className="min-h-10 sm:min-h-8" onClick={handleClose}>Cancel</Button>
-              <Button onClick={handleSubmit} disabled={!canSubmit} className="min-h-10 min-w-28 sm:min-h-8">Upload Record</Button>
+              <Button variant="outline" className="min-h-10 sm:min-h-8" onClick={handleClose} disabled={submitting}>Cancel</Button>
+              <Button onClick={handleSubmit} disabled={!canSubmit || submitting} className="min-h-10 min-w-28 gap-1.5 sm:min-h-8">
+                {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {submitting ? "Uploading…" : "Upload Record"}
+              </Button>
             </DialogFooter>
           </>
         )}

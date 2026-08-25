@@ -72,6 +72,8 @@ export interface ComplianceRecord {
   lastUpdated: string
   description: string
   fileNames: string[]
+  /** Production-only: real file IDs backing `fileNames`, used to authorize downloads. Empty in demo mode. */
+  attachments?: { fileId: string; name: string }[]
   tags: string[]
   relatedRef?: string
   classroomAgeGroup?: ClassroomAgeGroup

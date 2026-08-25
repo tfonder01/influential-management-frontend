@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { Archive, RotateCcw, ExternalLink } from "lucide-react"
 import { useApp } from "@/lib/store"
-import { LOCATIONS } from "@/lib/mock-data"
 import { CategoryBadge } from "@/components/category-badge"
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
@@ -13,7 +12,7 @@ import { MaintenanceStatusBadge } from "@/components/maintenance-badges"
 import { SupplyStatusBadge } from "@/components/supply-badges"
 
 export default function ArchivedPage() {
-  const { records, activity, restoreRecord, role, maintenanceRequests, restoreMaintenanceRequest, supplyRequests, restoreSupplyRequest } = useApp()
+  const { records, activity, restoreRecord, role, maintenanceRequests, restoreMaintenanceRequest, supplyRequests, restoreSupplyRequest, locations: LOCATIONS } = useApp()
   const [restoringId, setRestoringId] = useState<string | null>(null)
 
   const handleRestore = (recordId: string) => {

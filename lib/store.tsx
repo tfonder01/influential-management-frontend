@@ -1,6 +1,6 @@
 "use client"
 
-import React, { createContext, useContext, useState, useCallback, useMemo } from "react"
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from "react"
 import type {
   ComplianceRecord,
   Comment,
@@ -23,6 +23,23 @@ import {
   USERS,
   LOCATIONS,
 } from "./mock-data"
+import {
+  listAllRecords,
+  createRecordApi,
+  updateRecordStatusApi,
+  archiveRecordApi,
+  restoreRecordApi,
+  addCommentApi,
+  listCommentsApi,
+  commentFromApi,
+  isApiClientError,
+  type CreateRecordInput,
+} from "./records-api"
+
+function productionErrorMessage(error: unknown, fallback: string): string {
+  if (isApiClientError(error)) return error.message || fallback
+  return fallback
+}
 
 interface AppState {
   role: Role
@@ -40,6 +57,12 @@ interface AppState {
   restoreRecord: (id: string) => void
   addRecord: (record: ComplianceRecord) => void
   addComment: (comment: Comment) => void
+  recordsLoading: boolean
+  recordsError: string | null
+  refreshRecords: () => Promise<void>
+  upsertRecord: (record: ComplianceRecord) => void
+  loadRecordComments: (recordId: string) => Promise<void>
+  createProductionRecord: (input: CreateRecordInput) => Promise<ComplianceRecord>
   addMaintenanceRequest: (request: MaintenanceRequest) => void
   updateMaintenanceRequest: (id: string, updates: Partial<MaintenanceRequest>, detail?: string) => void
   archiveMaintenanceRequest: (id: string) => void
@@ -68,6 +91,10 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
   const productionRole = productionUser?.role.toLowerCase() as Role | undefined
   const [role, setRoleState] = useState<Role>(productionRole ?? "owner")
   const [allRecords, setRecords] = useState<ComplianceRecord[]>(INITIAL_RECORDS)
+  const [productionRecords, setProductionRecords] = useState<ComplianceRecord[]>([])
+  const [productionComments, setProductionComments] = useState<Comment[]>([])
+  const [recordsLoading, setRecordsLoading] = useState(false)
+  const [recordsError, setRecordsError] = useState<string | null>(null)
   const [comments, setComments] = useState<Comment[]>(INITIAL_COMMENTS)
   const [activity, setActivity] = useState<ActivityEvent[]>(INITIAL_ACTIVITY)
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS)
@@ -104,10 +131,45 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       : LOCATIONS.filter((location) => location.id === currentUser.locationId)
 
   const records = productionMode
-    ? []
+    ? productionRecords
     : role === "owner"
       ? allRecords
       : allRecords.filter((record) => record.locationId === currentUser.locationId)
+
+  const refreshRecords = useCallback(async () => {
+    if (!productionMode) return
+    setRecordsLoading(true)
+    setRecordsError(null)
+    try {
+      const records = await listAllRecords()
+      setProductionRecords(records)
+    } catch (error) {
+      setRecordsError(productionErrorMessage(error, "Failed to load records"))
+    } finally {
+      setRecordsLoading(false)
+    }
+  }, [productionMode])
+
+  useEffect(() => {
+    if (!productionMode) return
+    let cancelled = false
+    setRecordsLoading(true)
+    listAllRecords()
+      .then((records) => { if (!cancelled) setProductionRecords(records) })
+      .catch((error) => { if (!cancelled) setRecordsError(productionErrorMessage(error, "Failed to load records")) })
+      .finally(() => { if (!cancelled) setRecordsLoading(false) })
+    return () => { cancelled = true }
+  }, [productionMode])
+
+  const upsertRecord = useCallback((record: ComplianceRecord) => {
+    setProductionRecords((prev) => {
+      const index = prev.findIndex((existing) => existing.id === record.id)
+      if (index === -1) return [record, ...prev]
+      const next = [...prev]
+      next[index] = { ...next[index], ...record }
+      return next
+    })
+  }, [])
 
   const maintenanceRequests = productionMode
     ? []
@@ -131,7 +193,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       ? activity
       : activity.filter((event) => isVisibleEntity(event.recordId))
   const visibleComments = productionMode
-    ? []
+    ? productionComments
     : role === "owner"
       ? comments
       : comments.filter((comment) => isVisibleEntity(comment.recordId))
@@ -163,6 +225,16 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
 
   const updateRecordStatus = useCallback(
     (id: string, status: ComplianceRecord["status"]) => {
+      if (productionMode) {
+        if (status !== "Reviewed" && status !== "Needs Attention") return
+        updateRecordStatusApi(id, status)
+          .then((updated) => {
+            upsertRecord(updated)
+            showToast(status === "Reviewed" ? "Record marked Reviewed" : "Record marked Needs Attention")
+          })
+          .catch((error) => showToast(productionErrorMessage(error, "Failed to update status")))
+        return
+      }
       setRecords((prev) =>
         prev.map((r) =>
           r.id === id ? { ...r, status, lastUpdated: new Date().toISOString().split("T")[0] } : r
@@ -182,11 +254,17 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       }
       showToast(status === "Reviewed" ? "Record marked Reviewed" : "Record marked Needs Attention")
     },
-    [allRecords, currentUser, addActivityEvent, showToast]
+    [productionMode, upsertRecord, allRecords, currentUser, addActivityEvent, showToast]
   )
 
   const archiveRecord = useCallback(
     (id: string) => {
+      if (productionMode) {
+        archiveRecordApi(id)
+          .then((updated) => { upsertRecord(updated); showToast("Record archived") })
+          .catch((error) => showToast(productionErrorMessage(error, "Failed to archive record")))
+        return
+      }
       setRecords((prev) =>
         prev.map((r) =>
           r.id === id ? { ...r, status: "Archived", lastUpdated: new Date().toISOString().split("T")[0] } : r
@@ -203,11 +281,17 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       })
       showToast("Record archived")
     },
-    [currentUser, addActivityEvent, showToast]
+    [productionMode, upsertRecord, currentUser, addActivityEvent, showToast]
   )
 
   const restoreRecord = useCallback(
     (id: string) => {
+      if (productionMode) {
+        restoreRecordApi(id)
+          .then((updated) => { upsertRecord(updated); showToast("Record restored") })
+          .catch((error) => showToast(productionErrorMessage(error, "Failed to restore record")))
+        return
+      }
       setRecords((prev) =>
         prev.map((r) =>
           r.id === id ? { ...r, status: "New", lastUpdated: new Date().toISOString().split("T")[0] } : r
@@ -224,7 +308,31 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       })
       showToast("Record restored")
     },
-    [currentUser, addActivityEvent, showToast]
+    [productionMode, upsertRecord, currentUser, addActivityEvent, showToast]
+  )
+
+  const createProductionRecord = useCallback(
+    async (input: CreateRecordInput) => {
+      const record = await createRecordApi(input)
+      upsertRecord(record)
+      showToast("Record uploaded")
+      return record
+    },
+    [upsertRecord, showToast]
+  )
+
+  const loadRecordComments = useCallback(
+    async (recordId: string) => {
+      if (!productionMode) return
+      try {
+        const apiComments = await listCommentsApi(recordId)
+        const mapped = apiComments.map((comment) => commentFromApi(comment, recordId, currentUser.id, currentUser.role))
+        setProductionComments((prev) => [...prev.filter((comment) => comment.recordId !== recordId), ...mapped])
+      } catch {
+        // Comments are supplementary to the record detail view; a failed fetch should not block the page.
+      }
+    },
+    [productionMode, currentUser]
   )
 
   const addRecord = useCallback(
@@ -258,6 +366,16 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
 
   const addComment = useCallback(
     (comment: Comment) => {
+      if (productionMode) {
+        addCommentApi(comment.recordId, comment.text)
+          .then((saved) => {
+            const mapped = commentFromApi(saved, comment.recordId, currentUser.id, currentUser.role)
+            setProductionComments((prev) => [...prev, mapped])
+            showToast("Comment added")
+          })
+          .catch((error) => showToast(productionErrorMessage(error, "Failed to add comment")))
+        return
+      }
       setComments((prev) => [...prev, comment])
       addActivityEvent({
         recordId: comment.recordId,
@@ -270,7 +388,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       })
       showToast("Comment added")
     },
-    [currentUser, addActivityEvent, showToast]
+    [productionMode, currentUser, addActivityEvent, showToast]
   )
 
   const addMaintenanceRequest = useCallback(
@@ -482,6 +600,12 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
         restoreRecord,
         addRecord,
         addComment,
+        recordsLoading,
+        recordsError,
+        refreshRecords,
+        upsertRecord,
+        loadRecordComments,
+        createProductionRecord,
         addMaintenanceRequest,
         updateMaintenanceRequest,
         archiveMaintenanceRequest,
