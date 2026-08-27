@@ -22,8 +22,10 @@ import {
 import { AlertTriangle, CheckCircle2, File, Loader2, MapPin, Upload, X } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { CLASSROOM_AGE_GROUPS, COMPLIANCE_CATEGORIES, OPERATIONS_RECORD_TYPES } from "@/lib/mock-data"
-import { MONTH_OPTIONS, monthName, reportingPeriodLabel, startOfWeek } from "@/lib/reporting-period"
+import { MONTH_OPTIONS, monthName, startOfWeek } from "@/lib/reporting-period"
 import { uploadFileApi, isApiClientError } from "@/lib/records-api"
+import { generateRecordTitle as generateTitleFromInputs, relatedReferenceFor } from "@/lib/record-title"
+import { RECORD_TYPE_OPTIONS, COMPLIANCE_CADENCE_OPTIONS, OPERATIONS_CADENCE_OPTIONS } from "@/lib/record-form-config"
 import type {
   ClassroomAgeGroup,
   ComplianceCategory,
@@ -40,30 +42,6 @@ export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 export const MAX_UPLOAD_LABEL = "20MB"
 const ACCEPTED_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png"]
 const ACCEPTED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png"]
-
-const RECORD_TYPE_OPTIONS: Partial<Record<ComplianceCategory, readonly string[]>> = {
-  Drills: ["Fire Drill", "Lockdown Drill", "Tornado Drill", "Other Drill"],
-  "Health & Safety": ["Health & Safety Inspection", "Safety Checklist Review", "Other Health & Safety Record"],
-  Licensing: ["State Licensing Inspection", "Annual DCF Licensing Renewal", "Other Licensing Record"],
-  "Child Files": ["Child Enrollment File", "Child File Audit", "Other Child Record"],
-  "Staff Files": ["Staff Background Check", "CPR / First Aid Certification", "Staff File Audit", "Other Staff Record"],
-  "Parent Complaints": ["Parent Complaint", "Supervision Concern", "Health / Safety Concern", "Other Parent Complaint"],
-  "Staff Complaints": ["Workplace Conduct", "Scheduling / Policy", "Other Staff Complaint"],
-}
-
-/** Categories/types whose records recur on a reporting cadence, and which cadences are offered. */
-const COMPLIANCE_CADENCE_OPTIONS: Partial<Record<ComplianceCategory, { allowed: ReportingCadence[]; default: ReportingCadence }>> = {
-  "Classroom Observations": { allowed: ["MONTHLY"], default: "MONTHLY" },
-  Drills: { allowed: ["MONTHLY"], default: "MONTHLY" },
-  "Health & Safety": { allowed: ["MONTHLY", "WEEKLY"], default: "MONTHLY" },
-}
-
-const OPERATIONS_CADENCE_OPTIONS: Partial<Record<OperationsRecordType, { allowed: ReportingCadence[]; default: ReportingCadence }>> = {
-  "Opening Checklist": { allowed: ["WEEKLY", "MONTHLY"], default: "WEEKLY" },
-  "Closing Checklist": { allowed: ["WEEKLY", "MONTHLY"], default: "WEEKLY" },
-  "Playground Checklist": { allowed: ["WEEKLY", "MONTHLY"], default: "WEEKLY" },
-  "Cleaning Checklist": { allowed: ["WEEKLY", "MONTHLY"], default: "WEEKLY" },
-}
 
 interface UploadModalProps {
   open: boolean
@@ -114,59 +92,11 @@ function periodFromForm(form: UploadForm) {
 }
 
 function generateRecordTitle(form: UploadForm) {
-  const period = form.cadence !== "NONE" ? reportingPeriodLabel(periodFromForm(form)) : ""
-  const reference = form.referenceText.trim()
-  const incident = form.incidentText.trim()
-
-  if (form.workspace === "operations") {
-    if (form.operationsType === "Other Operations Record") {
-      return reference ? `Operations — ${reference}` : ""
-    }
-    if (!form.operationsType || !period) return ""
-    const prefix = form.area.trim() ? `${form.area.trim()} ` : ""
-    return `${prefix}${form.operationsType} — ${period}`
-  }
-
-  switch (form.complianceCategory) {
-    case "Classroom Observations":
-      return form.classroomAgeGroup && period ? `${form.classroomAgeGroup} Classroom Observation — ${period}` : ""
-    case "Drills":
-    case "Health & Safety":
-      return form.recordType && period ? `${form.recordType} — ${period}` : ""
-    case "Licensing":
-      return form.recordType && form.year ? `${form.recordType} — ${form.year}` : ""
-    case "Child Files":
-    case "Staff Files":
-      return form.recordType && reference ? `${form.recordType} — ${reference}` : ""
-    case "Parent Complaints": {
-      if (!form.recordType || (!form.classroomAgeGroup && !reference)) return ""
-      const parts = [form.recordType]
-      if (form.classroomAgeGroup) parts.push(`${form.classroomAgeGroup} Classroom`)
-      if (reference) parts.push(reference)
-      return parts.join(" — ")
-    }
-    case "Staff Complaints":
-      return form.recordType
-        ? ["Staff Complaint", form.recordType, reference].filter(Boolean).join(" — ")
-        : ""
-    case "CCIR / Critical Incidents":
-      return incident ? `CCIR / Critical Incident — ${incident}` : ""
-    default:
-      return ""
-  }
+  return generateTitleFromInputs(form)
 }
 
 function relatedReference(form: UploadForm) {
-  const reference = form.referenceText.trim()
-  const incident = form.incidentText.trim()
-
-  if (form.complianceCategory === "Child Files" && reference) return `Child: ${reference}`
-  if (form.complianceCategory === "Staff Files" && reference) return `Staff: ${reference}`
-  if ((form.complianceCategory === "Parent Complaints" || form.complianceCategory === "Staff Complaints") && reference) {
-    return `Reference: ${reference}`
-  }
-  if (form.complianceCategory === "CCIR / Critical Incidents" && incident) return `Incident: ${incident}`
-  return undefined
+  return relatedReferenceFor(form.complianceCategory, form.referenceText, form.incidentText)
 }
 
 export function UploadModal({ open, onClose, defaultLocationId, defaultWorkspace }: UploadModalProps) {

@@ -61,10 +61,14 @@ export interface Location {
 export interface ComplianceRecord {
   id: string
   title: string
+  /** Whether `title` was manually entered vs. structurally generated from category/period/etc. Undefined in demo mock data defaults to "custom" (preserve as-is) when editing. */
+  customTitle?: boolean
   locationId: string
   category: RecordCategory
   workspace?: RecordWorkspace
   recordType?: OperationsRecordType
+  /** Free-text Compliance record-type label (e.g. "Fire Drill"), distinct from `recordType` above which is Operations-only. */
+  recordTypeLabel?: string
   status: RecordStatus
   uploadedBy: string
   uploadedById: string

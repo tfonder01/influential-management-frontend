@@ -26,6 +26,7 @@ import {
 import {
   listAllRecords,
   createRecordApi,
+  updateRecordApi,
   updateRecordStatusApi,
   archiveRecordApi,
   restoreRecordApi,
@@ -34,11 +35,30 @@ import {
   commentFromApi,
   isApiClientError,
   type CreateRecordInput,
+  type UpdateRecordInput,
 } from "./records-api"
 
 function productionErrorMessage(error: unknown, fallback: string): string {
   if (isApiClientError(error)) return error.message || fallback
   return fallback
+}
+
+/**
+ * List responses intentionally contain summaries only. Preserve fields that can only come from a
+ * freshly fetched detail response so a slower list hydration cannot erase them on a direct-page load.
+ */
+function mergeRecordSummaries(previous: ComplianceRecord[], summaries: ComplianceRecord[]): ComplianceRecord[] {
+  const previousById = new Map(previous.map((record) => [record.id, record]))
+  return summaries.map((summary) => {
+    const detail = previousById.get(summary.id)
+    if (detail?.attachments === undefined) return summary
+    return {
+      ...summary,
+      description: detail.description,
+      fileNames: detail.fileNames,
+      attachments: detail.attachments,
+    }
+  })
 }
 
 interface AppState {
@@ -63,6 +83,8 @@ interface AppState {
   upsertRecord: (record: ComplianceRecord) => void
   loadRecordComments: (recordId: string) => Promise<void>
   createProductionRecord: (input: CreateRecordInput) => Promise<ComplianceRecord>
+  editRecord: (id: string, updates: Partial<ComplianceRecord>) => void
+  updateProductionRecord: (id: string, input: UpdateRecordInput) => Promise<ComplianceRecord>
   addMaintenanceRequest: (request: MaintenanceRequest) => void
   updateMaintenanceRequest: (id: string, updates: Partial<MaintenanceRequest>, detail?: string) => void
   archiveMaintenanceRequest: (id: string) => void
@@ -142,7 +164,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     setRecordsError(null)
     try {
       const records = await listAllRecords()
-      setProductionRecords(records)
+      setProductionRecords((previous) => mergeRecordSummaries(previous, records))
     } catch (error) {
       setRecordsError(productionErrorMessage(error, "Failed to load records"))
     } finally {
@@ -155,7 +177,9 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     let cancelled = false
     setRecordsLoading(true)
     listAllRecords()
-      .then((records) => { if (!cancelled) setProductionRecords(records) })
+      .then((records) => {
+        if (!cancelled) setProductionRecords((previous) => mergeRecordSummaries(previous, records))
+      })
       .catch((error) => { if (!cancelled) setRecordsError(productionErrorMessage(error, "Failed to load records")) })
       .finally(() => { if (!cancelled) setRecordsLoading(false) })
     return () => { cancelled = true }
@@ -317,6 +341,37 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       upsertRecord(record)
       showToast("Record uploaded")
       return record
+    },
+    [upsertRecord, showToast]
+  )
+
+  const editRecord = useCallback(
+    (id: string, updates: Partial<ComplianceRecord>) => {
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.id === id ? { ...r, ...updates, lastUpdated: new Date().toISOString().split("T")[0] } : r
+        )
+      )
+      addActivityEvent({
+        recordId: id,
+        type: "edited",
+        user: currentUser.name,
+        userId: currentUser.id,
+        role: currentUser.role,
+        timestamp: new Date().toISOString(),
+        detail: "Record details updated.",
+      })
+      showToast("Record updated")
+    },
+    [currentUser, addActivityEvent, showToast]
+  )
+
+  const updateProductionRecord = useCallback(
+    async (id: string, input: UpdateRecordInput) => {
+      const detail = await updateRecordApi(id, input)
+      upsertRecord(detail.record)
+      showToast("Record updated")
+      return detail.record
     },
     [upsertRecord, showToast]
   )
@@ -606,6 +661,8 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
         upsertRecord,
         loadRecordComments,
         createProductionRecord,
+        editRecord,
+        updateProductionRecord,
         addMaintenanceRequest,
         updateMaintenanceRequest,
         archiveMaintenanceRequest,

@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   FileText,
   Download,
+  Eye,
   CheckCircle2,
   AlertCircle,
   Archive,
@@ -18,18 +19,31 @@ import {
   Calendar,
   RefreshCw,
   Loader2,
+  Pencil,
+  Upload,
+  Trash2,
 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { StatusBadge } from "@/components/status-badge"
 import { CategoryBadge } from "@/components/category-badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { EditRecordModal } from "@/components/edit-record-modal"
+import { FilePreviewModal } from "@/components/file-preview-modal"
 import { cn } from "@/lib/utils"
 import type { Comment } from "@/lib/types"
 import { getRecordWorkspace, isOperationsRecord } from "@/lib/record-workspaces"
 import { WorkspaceBadge } from "@/components/workspace-badge"
 import { reportingPeriodLabel } from "@/lib/reporting-period"
-import { getRecordDetail, downloadFileApi, isApiClientError } from "@/lib/records-api"
+import {
+  addRecordAttachmentApi,
+  downloadFileApi,
+  getRecordDetail,
+  isApiClientError,
+  removeRecordAttachmentApi,
+  replaceRecordAttachmentApi,
+  uploadFileApi,
+} from "@/lib/records-api"
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   created: FileText,
@@ -66,6 +80,10 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
   const [commentText, setCommentText] = useState("")
   const [detailLoading, setDetailLoading] = useState(!isDemoMode)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [editOpen, setEditOpen] = useState(false)
+  const [previewFile, setPreviewFile] = useState<{ fileId: string; name: string } | null>(null)
+  const [attachmentAction, setAttachmentAction] = useState<string | null>(null)
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
 
   useEffect(() => {
     if (isDemoMode) return
@@ -126,10 +144,9 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
     setCommentText("")
   }
 
-  const handleDownload = async (name: string) => {
-    const attachment = record.attachments?.find((a) => a.name === name)
-    if (!attachment) {
-      showToast(`Download ready: ${name}`)
+  const handleDownload = async (attachment: { fileId?: string; name: string }) => {
+    if (!attachment.fileId) {
+      showToast("Download ready: " + attachment.name)
       return
     }
     try {
@@ -139,7 +156,61 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
     }
   }
 
+  const handleView = (attachment: { fileId?: string; name: string }) => {
+    if (!attachment.fileId) {
+      showToast("Preview is not available for this file.")
+      return
+    }
+    setPreviewFile({ fileId: attachment.fileId, name: attachment.name })
+  }
+
+  const attachmentErrorMessage = (error: unknown, fallback: string) =>
+    isApiClientError(error) ? error.message : fallback
+
+  const runAttachmentAction = async (key: string, successMessage: string, action: () => Promise<void>) => {
+    if (attachmentAction) return
+    setAttachmentAction(key)
+    setAttachmentError(null)
+    try {
+      await action()
+      const detail = await getRecordDetail(id)
+      upsertRecord(detail.record)
+      showToast(successMessage)
+    } catch (error) {
+      const message = attachmentErrorMessage(error, "Attachment update failed. Please try again.")
+      setAttachmentError(message)
+      showToast(message)
+    } finally {
+      setAttachmentAction(null)
+    }
+  }
+
+  const handleAddAttachment = async (file: File) => {
+    await runAttachmentAction("add", "Attachment added", async () => {
+      const uploaded = await uploadFileApi(file, record.locationId)
+      await addRecordAttachmentApi(id, uploaded.id)
+    })
+  }
+
+  const handleRemoveAttachment = async (attachment: { fileId?: string; name: string }) => {
+    if (!attachment.fileId || !window.confirm("Remove " + attachment.name + " from this record?")) return
+    await runAttachmentAction("remove:" + attachment.fileId, "Attachment removed", async () => {
+      await removeRecordAttachmentApi(id, attachment.fileId!)
+    })
+  }
+
+  const handleReplaceAttachment = async (attachment: { fileId?: string; name: string }, file: File) => {
+    if (!attachment.fileId) return
+    await runAttachmentAction("replace:" + attachment.fileId, "Attachment replaced", async () => {
+      const uploaded = await uploadFileApi(file, record.locationId)
+      await replaceRecordAttachmentApi(id, attachment.fileId!, uploaded.id)
+    })
+  }
+
   const isArchived = record.status === "Archived"
+  const canManageAttachments = !isDemoMode && !isArchived
+  const displayedAttachments = record.attachments
+    ?? record.fileNames.map((name) => ({ fileId: undefined, name }))
   const operationsRecord = isOperationsRecord(record)
   const backHref = operationsRecord ? "/operations" : "/records"
 
@@ -285,33 +356,112 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
 
           {/* Attached Files */}
           <div className="min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
-            <h2 className="text-sm font-semibold text-foreground">Attached Documents</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-foreground">
+                Attached Documents <span className="font-normal text-muted-foreground">({displayedAttachments.length})</span>
+              </h2>
+              {canManageAttachments && (
+                <label
+                  className={cn(
+                    "inline-flex min-h-9 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium text-primary transition-colors hover:bg-muted focus-within:ring-2 focus-within:ring-ring",
+                    attachmentAction && "pointer-events-none opacity-60"
+                  )}
+                >
+                  {attachmentAction === "add" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  Add Attachment
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                    className="sr-only"
+                    disabled={attachmentAction !== null}
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0]
+                      event.currentTarget.value = ""
+                      if (file) void handleAddAttachment(file)
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+            {attachmentError && (
+              <div role="alert" className="mt-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{attachmentError}</span>
+              </div>
+            )}
             <div className="mt-3 space-y-2">
-              {record.fileNames.map((name) => (
+              {displayedAttachments.map((attachment, index) => (
                 <div
-                  key={name}
+                  key={attachment.fileId ?? attachment.name + ":" + index}
                   className="group flex min-w-0 flex-col items-stretch gap-3 rounded-lg border border-border bg-muted/25 px-3 py-3 transition-[background-color,border-color,box-shadow] duration-150 hover:border-primary/20 hover:bg-muted/50 hover:shadow-sm sm:flex-row sm:items-center sm:px-4"
                 >
                   <div className="flex min-w-0 items-start gap-3 sm:flex-1 sm:items-center">
                     <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 break-words text-sm text-foreground">{name}</span>
+                    <span className="min-w-0 flex-1 break-words text-sm text-foreground">{attachment.name}</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDownload(name)}
-                    className="flex min-h-10 w-full shrink-0 items-center justify-center gap-1 rounded-md px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 sm:w-auto sm:px-2 sm:py-1"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Download
-                  </button>
+                  <div className="flex w-full shrink-0 flex-wrap gap-1 sm:w-auto sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleView(attachment)}
+                      className="flex min-h-10 flex-1 items-center justify-center gap-1 rounded-md px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 sm:flex-initial sm:px-2 sm:py-1"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      View
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDownload(attachment)}
+                      className="flex min-h-10 flex-1 items-center justify-center gap-1 rounded-md px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 sm:flex-initial sm:px-2 sm:py-1"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download
+                    </button>
+                    {canManageAttachments && attachment.fileId && (
+                      <>
+                        <label
+                          className={cn(
+                            "flex min-h-10 flex-1 cursor-pointer items-center justify-center gap-1 rounded-md px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-within:ring-2 focus-within:ring-ring sm:min-h-0 sm:flex-initial sm:px-2 sm:py-1",
+                            attachmentAction && "pointer-events-none opacity-60"
+                          )}
+                        >
+                          {attachmentAction === "replace:" + attachment.fileId
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <RefreshCw className="h-3.5 w-3.5" />}
+                          Replace
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                            className="sr-only"
+                            disabled={attachmentAction !== null}
+                            onChange={(event) => {
+                              const file = event.currentTarget.files?.[0]
+                              event.currentTarget.value = ""
+                              if (file) void handleReplaceAttachment(attachment, file)
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void handleRemoveAttachment(attachment)}
+                          disabled={attachmentAction !== null}
+                          className="flex min-h-10 flex-1 items-center justify-center gap-1 rounded-md px-3 py-2 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 sm:min-h-0 sm:flex-initial sm:px-2 sm:py-1"
+                        >
+                          {attachmentAction === "remove:" + attachment.fileId
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <Trash2 className="h-3.5 w-3.5" />}
+                          Remove
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
+              {displayedAttachments.length === 0 && (
+                <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                  No attachments.
+                </p>
+              )}
             </div>
-            {role !== "owner" && !isArchived && (
-              <button type="button" onClick={() => showToast("Additional file upload is available in the Upload Record flow")} className="mt-3 flex min-h-10 max-w-full items-center gap-2 rounded-md text-left text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                + Upload replacement / additional file
-              </button>
-            )}
           </div>
 
           {/* Comments */}
@@ -414,6 +564,18 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
           <div className="min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-semibold text-foreground">Actions</h2>
             <div className="mt-3 space-y-2">
+              {!isArchived && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start gap-2"
+                  onClick={() => setEditOpen(true)}
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit Record
+                </Button>
+              )}
+
               {role === "owner" && !isArchived && (
                 <>
                   <Button
@@ -465,18 +627,6 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                 </Button>
               )}
 
-              {role !== "owner" && !isArchived && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start gap-2"
-                  onClick={() => showToast("Editing is not available in this prototype")}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Edit Record
-                </Button>
-              )}
-
               {role !== "owner" && isArchived && (
                 <p className="text-xs text-muted-foreground rounded-lg bg-muted/40 p-3">
                   This record is archived. Only an Owner / Admin can restore it.
@@ -521,6 +671,14 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
       </div>
+
+      <EditRecordModal open={editOpen} onClose={() => setEditOpen(false)} record={record} />
+      <FilePreviewModal
+        open={Boolean(previewFile)}
+        onClose={() => setPreviewFile(null)}
+        fileId={previewFile?.fileId ?? null}
+        filename={previewFile?.name ?? ""}
+      />
     </div>
   )
 }

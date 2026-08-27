@@ -161,10 +161,12 @@ export function recordFromApi(record: ApiRecordSummary): ComplianceRecord {
   return {
     id: record.id,
     title: record.title,
+    customTitle: record.customTitle,
     locationId: record.locationId,
     category,
     workspace,
     recordType: workspace === "operations" && record.operationsType ? OPERATIONS_TYPE_FROM_API[record.operationsType] : undefined,
+    recordTypeLabel: record.recordType ?? undefined,
     status: record.archived ? "Archived" : (REVIEW_STATUS_FROM_API[record.reviewStatus] ?? "New"),
     uploadedBy: record.createdByName ?? "Unknown",
     uploadedById: record.createdByUserId,
@@ -292,6 +294,39 @@ export async function createRecordApi(input: CreateRecordInput): Promise<Complia
   return recordFromApi(record)
 }
 
+export interface UpdateRecordInput {
+  title: string
+  customTitle: boolean
+  complianceCategory?: ComplianceCategory
+  operationsType?: OperationsRecordType
+  recordType?: string
+  classroomAgeGroup?: ClassroomAgeGroup
+  area?: string
+  referenceLabel?: string
+  recordDate: string
+  description?: string
+  reportingPeriod?: ReportingPeriod
+}
+
+export async function updateRecordApi(id: string, input: UpdateRecordInput): Promise<RecordDetailResult> {
+  const period = reportingPeriodToApi(input.reportingPeriod)
+  const body = {
+    title: input.title,
+    customTitle: input.customTitle,
+    complianceCategory: input.complianceCategory ? COMPLIANCE_CATEGORY_TO_API[input.complianceCategory] : undefined,
+    operationsType: input.operationsType ? OPERATIONS_TYPE_TO_API[input.operationsType] : undefined,
+    recordType: input.recordType,
+    classroomAgeGroup: input.classroomAgeGroup ? CLASSROOM_TO_API[input.classroomAgeGroup] : undefined,
+    area: input.area,
+    referenceLabel: input.referenceLabel,
+    recordDate: input.recordDate,
+    description: input.description,
+    ...period,
+  }
+  const record = await apiClient.request<ApiRecordDetail>(`/api/records/${id}`, { method: "PATCH", body: JSON.stringify(body) })
+  return recordDetailFromApi(record)
+}
+
 export async function updateRecordStatusApi(id: string, status: "Reviewed" | "Needs Attention"): Promise<ComplianceRecord> {
   const record = await apiClient.request<ApiRecordDetail>(`/api/records/${id}/status`, {
     method: "PATCH",
@@ -338,6 +373,24 @@ export async function uploadFileApi(file: File, locationId: string): Promise<Api
   })
 }
 
+export async function addRecordAttachmentApi(recordId: string, fileId: string): Promise<ApiAttachment> {
+  return apiClient.request<ApiAttachment>("/api/records/" + recordId + "/attachments", {
+    method: "POST",
+    body: JSON.stringify({ fileId }),
+  })
+}
+
+export async function removeRecordAttachmentApi(recordId: string, fileId: string): Promise<void> {
+  await apiClient.request<void>("/api/records/" + recordId + "/attachments/" + fileId, { method: "DELETE" })
+}
+
+export async function replaceRecordAttachmentApi(recordId: string, oldFileId: string, newFileId: string): Promise<ApiAttachment> {
+  return apiClient.request<ApiAttachment>("/api/records/" + recordId + "/attachments/" + oldFileId, {
+    method: "PUT",
+    body: JSON.stringify({ fileId: newFileId }),
+  })
+}
+
 /** Downloads an authorized file and triggers a browser save, without ever exposing a public storage URL. */
 export async function downloadFileApi(fileId: string, filename: string): Promise<void> {
   const blob = await apiClient.requestBlob(`/api/files/${fileId}/content`)
@@ -349,6 +402,17 @@ export async function downloadFileApi(fileId: string, filename: string): Promise
   link.click()
   link.remove()
   URL.revokeObjectURL(url)
+}
+
+/**
+ * Fetches an authorized file for inline viewing (same authorization path as download, just a
+ * different Content-Disposition) and returns a short-lived object URL plus its content type, so
+ * the caller can render a preview without ever exposing a public storage URL. The caller owns the
+ * returned object URL and must revoke it (e.g. `URL.revokeObjectURL`) once the preview is closed.
+ */
+export async function viewFileApi(fileId: string): Promise<{ url: string; contentType: string }> {
+  const blob = await apiClient.requestBlob(`/api/files/${fileId}/content?disposition=inline`)
+  return { url: URL.createObjectURL(blob), contentType: blob.type }
 }
 
 export function isApiClientError(error: unknown): error is ApiClientError {
