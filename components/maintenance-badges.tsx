@@ -25,6 +25,7 @@ export function ApprovalStatusBadge({ status, className }: { status: Maintenance
     "Not Required": "border-slate-200 bg-slate-50/70 text-slate-600",
     "Awaiting Approval": "border-amber-200 bg-amber-50/80 text-amber-700",
     Approved: "border-emerald-200 bg-emerald-50/80 text-emerald-700",
+    "Needs Information": "border-orange-200 bg-orange-50/80 text-orange-700",
     Declined: "border-rose-200 bg-rose-50/80 text-rose-700",
   }
   return <span className={cn(base, styles[status], className)}>{status}</span>

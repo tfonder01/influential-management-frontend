@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { roleLabel } from "@/lib/role-labels"
 import { UploadModal } from "@/components/upload-modal"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -33,11 +34,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/settings": "Settings",
 }
 
-const ROLE_LABELS = {
-  owner: "Owner",
-  director: "Director",
-  assistant_director: "Assistant Director",
-} as const
 
 export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => void; menuOpen?: boolean }) {
   const { role, setRole, currentUser, notifications, unreadCount, markAllNotificationsRead, markNotificationRead, isDemoMode } =
@@ -88,7 +84,7 @@ export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => 
                   role === "owner" ? "bg-violet-500" : role === "director" ? "bg-emerald-500" : "bg-blue-500"
                 )}
               />
-              <span className="hidden sm:inline">View as: </span><span className="max-[430px]:sr-only">{ROLE_LABELS[role]}</span>
+              <span className="hidden sm:inline">View as: </span><span className="max-[430px]:sr-only">{roleLabel(role)}</span>
               <ChevronDown className="h-3 w-3 opacity-60" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">

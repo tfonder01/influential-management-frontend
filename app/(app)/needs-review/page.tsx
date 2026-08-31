@@ -14,7 +14,19 @@ import { ApprovalStatusBadge, PriorityBadge } from "@/components/maintenance-bad
 import { SupplyApprovalBadge, SupplyPriorityBadge } from "@/components/supply-badges"
 
 export default function NeedsReviewPage() {
-  const { records, updateRecordStatus, role, maintenanceRequests, updateMaintenanceRequest, supplyRequests, updateSupplyRequest } = useApp()
+  const {
+    records,
+    updateRecordStatus,
+    role,
+    maintenanceRequests,
+    updateMaintenanceRequest,
+    supplyRequests,
+    updateSupplyRequest,
+    approveProductionMaintenanceRequest,
+    requestMaintenanceInfoProduction,
+    isDemoMode,
+    locations,
+  } = useApp()
   const [now, setNow] = useState<number | null>(null)
   const [resolvingId, setResolvingId] = useState<string | null>(null)
 
@@ -76,7 +88,7 @@ export default function NeedsReviewPage() {
           </div>
           <div className="divide-y divide-border">
             {maintenanceQueue.map((request) => {
-              const location = LOCATIONS.find((item) => item.id === request.locationId)
+              const location = (isDemoMode ? LOCATIONS : locations).find((item) => item.id === request.locationId)
               return (
                 <div key={request.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-muted/35 lg:flex-row lg:items-center">
                   <div className="min-w-0 flex-1">
@@ -86,8 +98,8 @@ export default function NeedsReviewPage() {
                     <p className="mt-1 text-xs text-amber-700">{request.needsMoreInfo ? "Additional information was requested." : "Owner approval is required before work proceeds."}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                    <Button size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-600/90" onClick={() => updateMaintenanceRequest(request.id, { approvalStatus: "Approved", maintenanceStatus: request.maintenanceStatus === "Submitted" ? "Approved / Ready" : request.maintenanceStatus, needsMoreInfo: false, approvalNote: "Approved by Owner." }, "Owner approved the maintenance request.")}><CheckCircle2 className="h-3.5 w-3.5" />Approve</Button>
-                    <Button variant="outline" size="sm" className="gap-1.5 text-amber-700" onClick={() => updateMaintenanceRequest(request.id, { needsMoreInfo: true, approvalNote: "Owner requested more information before approval." }, "Owner requested more information.")}><MessageSquareMore className="h-3.5 w-3.5" />More info</Button>
+                    <Button size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-600/90" onClick={() => { if (isDemoMode) { updateMaintenanceRequest(request.id, { approvalStatus: "Approved", maintenanceStatus: request.maintenanceStatus === "Submitted" ? "Approved / Ready" : request.maintenanceStatus, needsMoreInfo: false, approvalNote: "Approved by Owner." }, "Owner approved the maintenance request."); return } void approveProductionMaintenanceRequest(request.id, "Approved by Owner.").catch(() => undefined) }}><CheckCircle2 className="h-3.5 w-3.5" />Approve</Button>
+                    <Button variant="outline" size="sm" className="gap-1.5 text-amber-700" onClick={() => { if (isDemoMode) { updateMaintenanceRequest(request.id, { needsMoreInfo: true, approvalNote: "Owner requested more information before approval." }, "Owner requested more information."); return } void requestMaintenanceInfoProduction(request.id, "Owner requested more information before approval.").catch(() => undefined) }}><MessageSquareMore className="h-3.5 w-3.5" />More info</Button>
                     <Button render={<Link href={`/maintenance/${request.id}`} />} nativeButton={false} variant="ghost" size="icon" aria-label={`Open ${request.title}`}><ExternalLink className="h-4 w-4" /></Button>
                   </div>
                 </div>

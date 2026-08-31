@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   Clock3,
+  Loader2,
   Plus,
   Search,
   ChevronRight,
@@ -21,6 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NewMaintenanceRequestModal } from "@/components/new-maintenance-request-modal"
 import { hasPotentialRepeatHistory } from "@/lib/maintenance-history"
+import { maintenanceDisplayId } from "@/lib/maintenance-display"
 import {
   ApprovalStatusBadge,
   MaintenanceStatusBadge,
@@ -46,7 +48,14 @@ function SummaryCard({ label, value, icon: Icon, accent }: { label: string; valu
 }
 
 export default function MaintenancePage() {
-  const { maintenanceRequests, locations } = useApp()
+  const {
+    maintenanceRequests,
+    maintenanceRequestsLoading,
+    maintenanceRequestsError,
+    refreshMaintenanceRequests,
+    locations,
+    isDemoMode,
+  } = useApp()
   const router = useRouter()
   const [modalOpen, setModalOpen] = useState(false)
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false)
@@ -94,6 +103,9 @@ export default function MaintenancePage() {
     setMoreFiltersOpen(false)
   }
 
+  const showInitialLoading = !isDemoMode && maintenanceRequestsLoading && maintenanceRequests.length === 0
+  const showInitialError = !isDemoMode && maintenanceRequestsError && maintenanceRequests.length === 0
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -108,6 +120,18 @@ export default function MaintenancePage() {
         </div>
         <Button className="gap-2 sm:shrink-0" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" />New Maintenance Request</Button>
       </div>
+
+      {!isDemoMode && maintenanceRequestsError && (
+        <div className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50/70 px-4 py-3 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{maintenanceRequestsError}</span>
+          </div>
+          <Button variant="outline" size="sm" className="border-red-200 bg-white text-red-700 hover:bg-red-50" onClick={() => void refreshMaintenanceRequests()}>
+            Retry
+          </Button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 min-[390px]:grid-cols-2 lg:grid-cols-5">
         <SummaryCard label="Open Requests" value={active.filter((request) => !["Completed", "Cancelled"].includes(request.maintenanceStatus)).length} icon={Wrench} accent="bg-blue-50 text-blue-700" />
@@ -163,10 +187,20 @@ export default function MaintenancePage() {
 
         <div className="flex items-center justify-between border-b border-border bg-muted/25 px-4 py-3">
           <p className="text-xs font-medium text-muted-foreground">{filtered.length} of {active.length} requests</p>
-          <p className="hidden text-[11px] text-muted-foreground sm:block">Approval and maintenance progress are tracked separately</p>
+          <div className="flex items-center gap-3">
+            {!isDemoMode && maintenanceRequestsLoading && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Refreshing…</span>}
+            <p className="hidden text-[11px] text-muted-foreground sm:block">Approval and maintenance progress are tracked separately</p>
+          </div>
         </div>
 
-        {filtered.length === 0 ? (
+        {showInitialLoading ? (
+          <div className="flex flex-col items-center gap-3 py-14 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <p className="text-sm">Loading maintenance requests…</p>
+          </div>
+        ) : showInitialError ? (
+          <div className="py-14 text-center"><p className="text-sm font-medium text-foreground">Maintenance requests could not be loaded.</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void refreshMaintenanceRequests()}>Retry</Button></div>
+        ) : filtered.length === 0 ? (
           <div className="py-14 text-center"><p className="text-sm font-medium text-foreground">No matching requests</p><p className="mt-1 text-xs text-muted-foreground">Try clearing one or more filters.</p></div>
         ) : (
           <>
@@ -175,7 +209,7 @@ export default function MaintenancePage() {
                 const location = locations.find((item) => item.id === request.locationId)
                 return (
                   <Link key={request.id} href={`/maintenance/${request.id}`} className="interactive-row block p-4">
-                    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-semibold leading-snug text-foreground">{request.title}</p><p className="mt-1 text-xs text-muted-foreground">{location?.name} · {request.area}</p></div><PriorityBadge priority={request.priority} /></div>
+                    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-semibold leading-snug text-foreground">{request.title}</p><p className="mt-0.5 text-[11px] font-medium text-muted-foreground/80">{maintenanceDisplayId(request)}</p><p className="mt-1 text-xs text-muted-foreground">{location?.name} · {request.area}</p></div><PriorityBadge priority={request.priority} /></div>
                     <div className="mt-3 flex flex-wrap gap-1.5"><ApprovalStatusBadge status={request.approvalStatus} /><MaintenanceStatusBadge status={request.maintenanceStatus} />{hasPotentialRepeatHistory(request) ? <RepeatIssueBadge /> : null}</div>
                     <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground"><span>{request.category}</span><span className="font-medium text-foreground">{request.finalCost != null ? money.format(request.finalCost) : request.estimatedCost != null ? `Est. ${money.format(request.estimatedCost)}` : "—"}</span></div>
                   </Link>
@@ -197,7 +231,7 @@ export default function MaintenancePage() {
                         onClick={() => router.push(`/maintenance/${request.id}`)}
                         className="group cursor-pointer transition-colors duration-150 ease-out hover:bg-muted/55"
                       >
-                        <td className="px-4 py-3.5"><Link href={`/maintenance/${request.id}`} onClick={(event) => event.stopPropagation()} className="block max-w-[280px] truncate rounded-sm text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{request.title}</Link><div className="mt-1.5 flex items-center gap-1.5"><PriorityBadge priority={request.priority} />{hasPotentialRepeatHistory(request) ? <RepeatIssueBadge /> : null}</div></td>
+                        <td className="px-4 py-3.5"><Link href={`/maintenance/${request.id}`} onClick={(event) => event.stopPropagation()} className="block max-w-[280px] truncate rounded-sm text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{request.title}</Link><p className="mt-0.5 text-[11px] font-medium text-muted-foreground/80">{maintenanceDisplayId(request)}</p><div className="mt-1.5 flex items-center gap-1.5"><PriorityBadge priority={request.priority} />{hasPotentialRepeatHistory(request) ? <RepeatIssueBadge /> : null}</div></td>
                         <td className="px-4 py-3.5 text-xs text-foreground">{location?.name ?? "—"}</td>
                         <td className="px-4 py-3.5 text-xs text-foreground">{request.area}</td>
                         <td className="px-4 py-3.5 text-xs text-muted-foreground">{request.category}</td>

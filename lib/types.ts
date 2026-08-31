@@ -151,6 +151,7 @@ export type MaintenanceApprovalStatus =
   | "Not Required"
   | "Awaiting Approval"
   | "Approved"
+  | "Needs Information"
   | "Declined"
 export type MaintenanceStatus =
   | "Submitted"
@@ -161,13 +162,16 @@ export type MaintenanceStatus =
   | "Cancelled"
 
 export interface MaintenanceAttachment {
+  fileId?: string
   name: string
+  displayName?: string
   uploadedAt: string
   uploadedBy: string
 }
 
 export interface MaintenanceRequest {
   id: string
+  requestNumber?: number
   title: string
   description: string
   locationId: string

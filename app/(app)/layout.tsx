@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { AppProvider } from "@/lib/store"
 import { Sidebar } from "@/components/sidebar"
 import { Topbar } from "@/components/topbar"
@@ -8,8 +8,26 @@ import { cn } from "@/lib/utils"
 import { AuthGate } from "@/components/auth-gate"
 import { useAuth } from "@/lib/auth"
 
+const SIDEBAR_COLLAPSE_STORAGE_KEY = "im.sidebar.collapsed"
+
 function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Start expanded on both server and first client render to avoid a hydration mismatch;
+  // sync the real preference from localStorage after mount.
+  const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)
+    if (stored === "true") setCollapsed(true)
+  }, [])
+
+  const toggleCollapsed = () => {
+    setCollapsed((previous) => {
+      const next = !previous
+      window.localStorage.setItem(SIDEBAR_COLLAPSE_STORAGE_KEY, String(next))
+      return next
+    })
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -31,7 +49,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
+        <Sidebar onClose={() => setSidebarOpen(false)} collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
       </div>
 
       <div className="flex flex-1 min-w-0 flex-col overflow-hidden">

@@ -37,6 +37,30 @@ import {
   type CreateRecordInput,
   type UpdateRecordInput,
 } from "./records-api"
+import {
+  addMaintenanceAttachmentApi,
+  addMaintenanceCommentApi,
+  approveMaintenanceRequestApi,
+  archiveMaintenanceRequestApi,
+  changeMaintenanceStatusApi,
+  declineMaintenanceRequestApi,
+  getMaintenanceDetail,
+  listAllMaintenanceRequests,
+  listMaintenanceCommentsApi,
+  maintenanceCommentFromApi,
+  requestMaintenanceInfoApi,
+  resubmitMaintenanceApprovalApi,
+  reopenMaintenanceApprovalApi,
+  removeMaintenanceAttachmentApi,
+  renameMaintenanceAttachmentApi,
+  replaceMaintenanceAttachmentApi,
+  restoreMaintenanceRequestApi,
+  updateMaintenanceRequestApi,
+  createMaintenanceRequestApi,
+  type ApiMaintenanceAttachmentType,
+  type CreateMaintenanceInput,
+  type UpdateMaintenanceInput,
+} from "./maintenance-api"
 
 function productionErrorMessage(error: unknown, fallback: string): string {
   if (isApiClientError(error)) return error.message || fallback
@@ -57,6 +81,29 @@ function mergeRecordSummaries(previous: ComplianceRecord[], summaries: Complianc
       description: detail.description,
       fileNames: detail.fileNames,
       attachments: detail.attachments,
+    }
+  })
+}
+
+function mergeMaintenanceSummaries(previous: MaintenanceRequest[], summaries: MaintenanceRequest[]): MaintenanceRequest[] {
+  const previousById = new Map(previous.map((request) => [request.id, request]))
+  return summaries.map((summary) => {
+    const detail = previousById.get(summary.id)
+    if (!detail) return summary
+    return {
+      ...summary,
+      description: detail.description,
+      approvalNote: detail.approvalNote,
+      vendorContact: detail.vendorContact,
+      originalPhotos: detail.originalPhotos,
+      completionPhotos: detail.completionPhotos,
+      invoices: detail.invoices,
+      assetName: detail.assetName,
+      assetType: detail.assetType,
+      repeatIssueKey: detail.repeatIssueKey,
+      repeatRepairCount: detail.repeatRepairCount,
+      repeatRecordedCost: detail.repeatRecordedCost,
+      repeatRepairPeriodMonths: detail.repeatRepairPeriodMonths,
     }
   })
 }
@@ -86,6 +133,24 @@ interface AppState {
   editRecord: (id: string, updates: Partial<ComplianceRecord>) => void
   updateProductionRecord: (id: string, input: UpdateRecordInput) => Promise<ComplianceRecord>
   addMaintenanceRequest: (request: MaintenanceRequest) => void
+  maintenanceRequestsLoading: boolean
+  maintenanceRequestsError: string | null
+  refreshMaintenanceRequests: () => Promise<void>
+  upsertMaintenanceRequest: (request: MaintenanceRequest) => void
+  loadMaintenanceComments: (recordId: string) => Promise<void>
+  createProductionMaintenanceRequest: (input: CreateMaintenanceInput) => Promise<MaintenanceRequest>
+  updateProductionMaintenanceRequest: (id: string, input: UpdateMaintenanceInput) => Promise<MaintenanceRequest>
+  changeProductionMaintenanceStatus: (id: string, status: "In Progress" | "Waiting" | "Completed" | "Cancelled") => Promise<MaintenanceRequest>
+  approveProductionMaintenanceRequest: (id: string, note?: string) => Promise<MaintenanceRequest>
+  declineProductionMaintenanceRequest: (id: string, note?: string) => Promise<MaintenanceRequest>
+  requestMaintenanceInfoProduction: (id: string, note?: string) => Promise<MaintenanceRequest>
+  resubmitProductionMaintenanceApproval: (id: string, note?: string) => Promise<MaintenanceRequest>
+  reopenProductionMaintenanceApproval: (id: string) => Promise<MaintenanceRequest>
+  addProductionMaintenanceAttachment: (id: string, fileId: string, type: ApiMaintenanceAttachmentType) => Promise<void>
+  removeProductionMaintenanceAttachment: (id: string, fileId: string) => Promise<void>
+  replaceProductionMaintenanceAttachment: (id: string, oldFileId: string, newFileId: string, type?: ApiMaintenanceAttachmentType) => Promise<void>
+  renameProductionMaintenanceAttachment: (id: string, fileId: string, displayName: string) => Promise<void>
+  addMaintenanceComment: (comment: Comment) => Promise<void>
   updateMaintenanceRequest: (id: string, updates: Partial<MaintenanceRequest>, detail?: string) => void
   archiveMaintenanceRequest: (id: string) => void
   restoreMaintenanceRequest: (id: string) => void
@@ -114,9 +179,12 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
   const [role, setRoleState] = useState<Role>(productionRole ?? "owner")
   const [allRecords, setRecords] = useState<ComplianceRecord[]>(INITIAL_RECORDS)
   const [productionRecords, setProductionRecords] = useState<ComplianceRecord[]>([])
+  const [productionMaintenanceRequests, setProductionMaintenanceRequests] = useState<MaintenanceRequest[]>([])
   const [productionComments, setProductionComments] = useState<Comment[]>([])
   const [recordsLoading, setRecordsLoading] = useState(false)
   const [recordsError, setRecordsError] = useState<string | null>(null)
+  const [maintenanceRequestsLoading, setMaintenanceRequestsLoading] = useState(false)
+  const [maintenanceRequestsError, setMaintenanceRequestsError] = useState<string | null>(null)
   const [comments, setComments] = useState<Comment[]>(INITIAL_COMMENTS)
   const [activity, setActivity] = useState<ActivityEvent[]>(INITIAL_ACTIVITY)
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS)
@@ -195,8 +263,49 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     })
   }, [])
 
+  const refreshMaintenanceRequests = useCallback(async () => {
+    if (!productionMode) return
+    setMaintenanceRequestsLoading(true)
+    setMaintenanceRequestsError(null)
+    try {
+      const requests = await listAllMaintenanceRequests()
+      setProductionMaintenanceRequests((previous) => mergeMaintenanceSummaries(previous, requests))
+    } catch (error) {
+      setMaintenanceRequestsError(productionErrorMessage(error, "Failed to load maintenance requests"))
+    } finally {
+      setMaintenanceRequestsLoading(false)
+    }
+  }, [productionMode])
+
+  useEffect(() => {
+    if (!productionMode) return
+    let cancelled = false
+    setMaintenanceRequestsLoading(true)
+    listAllMaintenanceRequests()
+      .then((requests) => {
+        if (!cancelled) setProductionMaintenanceRequests((previous) => mergeMaintenanceSummaries(previous, requests))
+      })
+      .catch((error) => {
+        if (!cancelled) setMaintenanceRequestsError(productionErrorMessage(error, "Failed to load maintenance requests"))
+      })
+      .finally(() => {
+        if (!cancelled) setMaintenanceRequestsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [productionMode])
+
+  const upsertMaintenanceRequest = useCallback((request: MaintenanceRequest) => {
+    setProductionMaintenanceRequests((prev) => {
+      const index = prev.findIndex((existing) => existing.id === request.id)
+      if (index === -1) return [request, ...prev]
+      const next = [...prev]
+      next[index] = { ...next[index], ...request }
+      return next
+    })
+  }, [])
+
   const maintenanceRequests = productionMode
-    ? []
+    ? productionMaintenanceRequests
     : role === "owner"
       ? allMaintenanceRequests
       : allMaintenanceRequests.filter((request) => request.locationId === currentUser.locationId)
@@ -390,6 +499,29 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     [productionMode, currentUser]
   )
 
+  const loadMaintenanceComments = useCallback(
+    async (recordId: string) => {
+      if (!productionMode) return
+      try {
+        const apiComments = await listMaintenanceCommentsApi(recordId)
+        const mapped = apiComments.map((comment) => maintenanceCommentFromApi(comment, recordId, currentUser.id, currentUser.role))
+        setProductionComments((prev) => [...prev.filter((comment) => comment.recordId !== recordId), ...mapped])
+      } catch {
+        // Comments are supplementary to the maintenance detail view; a failed fetch should not block the page.
+      }
+    },
+    [productionMode, currentUser]
+  )
+
+  const refreshMaintenanceDetail = useCallback(
+    async (id: string) => {
+      const detail = await getMaintenanceDetail(id)
+      upsertMaintenanceRequest(detail.request)
+      return detail.request
+    },
+    [upsertMaintenanceRequest]
+  )
+
   const addRecord = useCallback(
     (record: ComplianceRecord) => {
       setRecords((prev) => [record, ...prev])
@@ -446,6 +578,190 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     [productionMode, currentUser, addActivityEvent, showToast]
   )
 
+  const createProductionMaintenanceRequest = useCallback(
+    async (input: CreateMaintenanceInput) => {
+      const request = await createMaintenanceRequestApi(input)
+      upsertMaintenanceRequest(request)
+      showToast("Maintenance request submitted")
+      return request
+    },
+    [upsertMaintenanceRequest, showToast]
+  )
+
+  const updateProductionMaintenanceRequest = useCallback(
+    async (id: string, input: UpdateMaintenanceInput) => {
+      const detail = await updateMaintenanceRequestApi(id, input)
+      upsertMaintenanceRequest(detail.request)
+      showToast("Vendor, assignment, and cost details updated.")
+      return detail.request
+    },
+    [upsertMaintenanceRequest, showToast]
+  )
+
+  const changeProductionMaintenanceStatus = useCallback(
+    async (id: string, status: "In Progress" | "Waiting" | "Completed" | "Cancelled") => {
+      try {
+        const request = await changeMaintenanceStatusApi(id, status)
+        upsertMaintenanceRequest(request)
+        showToast(`Maintenance status changed to ${status}.`)
+        return request
+      } catch (error) {
+        const message = isApiClientError(error) && error.status === 409 && error.code === "APPROVAL_PENDING"
+          ? "This request is awaiting Owner approval before progress can change."
+          : productionErrorMessage(error, "Failed to update maintenance status")
+        showToast(message)
+        throw error
+      }
+    },
+    [upsertMaintenanceRequest, showToast]
+  )
+
+  const approveProductionMaintenanceRequest = useCallback(
+    async (id: string, note?: string) => {
+      try {
+        const request = await approveMaintenanceRequestApi(id, note)
+        upsertMaintenanceRequest(request)
+        showToast("Owner approved the maintenance request.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to approve maintenance request"))
+        throw error
+      }
+    },
+    [upsertMaintenanceRequest, showToast]
+  )
+
+  const declineProductionMaintenanceRequest = useCallback(
+    async (id: string, note?: string) => {
+      try {
+        const request = await declineMaintenanceRequestApi(id, note)
+        upsertMaintenanceRequest(request)
+        showToast("Owner declined the maintenance request.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to decline maintenance request"))
+        throw error
+      }
+    },
+    [upsertMaintenanceRequest, showToast]
+  )
+
+  const requestMaintenanceInfoProduction = useCallback(
+    async (id: string, note?: string) => {
+      try {
+        const request = await requestMaintenanceInfoApi(id, note)
+        upsertMaintenanceRequest(request)
+        showToast("Owner requested more information.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to request more information"))
+        throw error
+      }
+    },
+    [upsertMaintenanceRequest, showToast]
+  )
+
+  const resubmitProductionMaintenanceApproval = useCallback(
+    async (id: string, note?: string) => {
+      try {
+        const request = await resubmitMaintenanceApprovalApi(id, note)
+        upsertMaintenanceRequest(request)
+        showToast("Request resubmitted for approval.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to resubmit request for approval"))
+        throw error
+      }
+    },
+    [upsertMaintenanceRequest, showToast]
+  )
+
+  const reopenProductionMaintenanceApproval = useCallback(
+    async (id: string) => {
+      try {
+        const request = await reopenMaintenanceApprovalApi(id)
+        upsertMaintenanceRequest(request)
+        showToast("Approval reopened. Awaiting Owner decision.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to reopen approval"))
+        throw error
+      }
+    },
+    [upsertMaintenanceRequest, showToast]
+  )
+
+  const addProductionMaintenanceAttachment = useCallback(
+    async (id: string, fileId: string, type: ApiMaintenanceAttachmentType) => {
+      try {
+        await addMaintenanceAttachmentApi(id, fileId, type)
+        await refreshMaintenanceDetail(id)
+        showToast(type === "INVOICE" ? "Invoice attached" : "Photo attached")
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to attach file"))
+        throw error
+      }
+    },
+    [refreshMaintenanceDetail, showToast]
+  )
+
+  const removeProductionMaintenanceAttachment = useCallback(
+    async (id: string, fileId: string) => {
+      try {
+        await removeMaintenanceAttachmentApi(id, fileId)
+        await refreshMaintenanceDetail(id)
+        showToast("Attachment removed")
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to remove attachment"))
+        throw error
+      }
+    },
+    [refreshMaintenanceDetail, showToast]
+  )
+
+  const replaceProductionMaintenanceAttachment = useCallback(
+    async (id: string, oldFileId: string, newFileId: string, type?: ApiMaintenanceAttachmentType) => {
+      try {
+        await replaceMaintenanceAttachmentApi(id, oldFileId, newFileId, type)
+        await refreshMaintenanceDetail(id)
+        showToast("Attachment replaced")
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to replace attachment"))
+        throw error
+      }
+    },
+    [refreshMaintenanceDetail, showToast]
+  )
+
+  const renameProductionMaintenanceAttachment = useCallback(
+    async (id: string, fileId: string, displayName: string) => {
+      try {
+        await renameMaintenanceAttachmentApi(id, fileId, displayName)
+        await refreshMaintenanceDetail(id)
+        showToast("Attachment renamed")
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to rename attachment"))
+        throw error
+      }
+    },
+    [refreshMaintenanceDetail, showToast]
+  )
+
+  const addMaintenanceComment = useCallback(
+    async (comment: Comment) => {
+      try {
+        const saved = await addMaintenanceCommentApi(comment.recordId, comment.text)
+        const mapped = maintenanceCommentFromApi(saved, comment.recordId, currentUser.id, currentUser.role)
+        setProductionComments((prev) => [...prev, mapped])
+        showToast("Comment added")
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to add comment"))
+        throw error
+      }
+    },
+    [currentUser, showToast]
+  )
+
   const addMaintenanceRequest = useCallback(
     (request: MaintenanceRequest) => {
       setMaintenanceRequests((prev) => [request, ...prev])
@@ -477,6 +793,10 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
 
   const updateMaintenanceRequest = useCallback(
     (id: string, updates: Partial<MaintenanceRequest>, detail = "Maintenance request updated.") => {
+      if (productionMode) {
+        console.warn("updateMaintenanceRequest is demo-only in production mode.", { id, updates, detail })
+        return
+      }
       setMaintenanceRequests((prev) => prev.map((request) =>
         request.id === id
           ? { ...request, ...updates, lastUpdated: new Date().toISOString() }
@@ -505,10 +825,19 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       }
       showToast(detail)
     },
-    [currentUser, addActivityEvent, showToast]
+    [productionMode, currentUser, addActivityEvent, showToast]
   )
 
   const archiveMaintenanceRequest = useCallback((id: string) => {
+    if (productionMode) {
+      archiveMaintenanceRequestApi(id)
+        .then((updated) => {
+          upsertMaintenanceRequest(updated)
+          showToast("Maintenance request archived")
+        })
+        .catch((error) => showToast(productionErrorMessage(error, "Failed to archive maintenance request")))
+      return
+    }
     setMaintenanceRequests((prev) => prev.map((request) =>
       request.id === id ? { ...request, archived: true, lastUpdated: new Date().toISOString() } : request
     ))
@@ -522,9 +851,18 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       detail: "Maintenance request archived.",
     })
     showToast("Maintenance request archived")
-  }, [currentUser, addActivityEvent, showToast])
+  }, [productionMode, upsertMaintenanceRequest, currentUser, addActivityEvent, showToast])
 
   const restoreMaintenanceRequest = useCallback((id: string) => {
+    if (productionMode) {
+      restoreMaintenanceRequestApi(id)
+        .then((updated) => {
+          upsertMaintenanceRequest(updated)
+          showToast("Maintenance request restored")
+        })
+        .catch((error) => showToast(productionErrorMessage(error, "Failed to restore maintenance request")))
+      return
+    }
     setMaintenanceRequests((prev) => prev.map((request) =>
       request.id === id ? { ...request, archived: false, lastUpdated: new Date().toISOString() } : request
     ))
@@ -538,13 +876,17 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       detail: "Maintenance request restored from archive.",
     })
     showToast("Maintenance request restored")
-  }, [currentUser, addActivityEvent, showToast])
+  }, [productionMode, upsertMaintenanceRequest, currentUser, addActivityEvent, showToast])
 
   const addMaintenanceFile = useCallback((
     id: string,
     field: "originalPhotos" | "completionPhotos" | "invoices",
     fileName: string
   ) => {
+    if (productionMode) {
+      console.warn("addMaintenanceFile is demo-only in production mode.", { id, field, fileName })
+      return
+    }
     const attachment = { name: fileName, uploadedAt: new Date().toISOString(), uploadedBy: currentUser.name }
     setMaintenanceRequests((prev) => prev.map((request) =>
       request.id === id
@@ -574,7 +916,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       }, ...prev])
     }
     showToast(`${label} attached`)
-  }, [currentUser, addActivityEvent, showToast])
+  }, [productionMode, currentUser, addActivityEvent, showToast])
 
   const addSupplyRequest = useCallback((request: SupplyRequest) => {
     setSupplyRequests((prev) => [request, ...prev])
@@ -664,6 +1006,24 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
         editRecord,
         updateProductionRecord,
         addMaintenanceRequest,
+        maintenanceRequestsLoading,
+        maintenanceRequestsError,
+        refreshMaintenanceRequests,
+        upsertMaintenanceRequest,
+        loadMaintenanceComments,
+        createProductionMaintenanceRequest,
+        updateProductionMaintenanceRequest,
+        changeProductionMaintenanceStatus,
+        approveProductionMaintenanceRequest,
+        declineProductionMaintenanceRequest,
+        requestMaintenanceInfoProduction,
+        resubmitProductionMaintenanceApproval,
+        reopenProductionMaintenanceApproval,
+        addProductionMaintenanceAttachment,
+        removeProductionMaintenanceAttachment,
+        replaceProductionMaintenanceAttachment,
+        renameProductionMaintenanceAttachment,
+        addMaintenanceComment,
         updateMaintenanceRequest,
         archiveMaintenanceRequest,
         restoreMaintenanceRequest,

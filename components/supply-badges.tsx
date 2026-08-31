@@ -9,6 +9,7 @@ export function SupplyApprovalBadge({ status, className }: { status: SupplyAppro
     "Not Required": "border-slate-200 bg-slate-50 text-slate-600",
     "Awaiting Approval": "border-amber-200 bg-amber-50 text-amber-700",
     Approved: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    "Needs Information": "border-orange-200 bg-orange-50 text-orange-700",
     Declined: "border-rose-200 bg-rose-50 text-rose-700",
   }
   return <span className={cn(base, styles[status], className)}>{status}</span>
