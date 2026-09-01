@@ -34,7 +34,7 @@ export function ApprovalStatusBadge({ status, className }: { status: Maintenance
 export function PriorityBadge({ priority, className }: { priority: MaintenancePriority; className?: string }) {
   const styles: Record<MaintenancePriority, string> = {
     Low: "border-slate-200 bg-transparent text-slate-500",
-    Normal: "border-blue-200/80 bg-blue-50/55 text-blue-600",
+    Medium: "border-blue-200/80 bg-blue-50/55 text-blue-600",
     High: "border-amber-200 bg-amber-50/70 text-amber-700",
     Urgent: "border-rose-200 bg-rose-50/75 text-rose-700",
   }

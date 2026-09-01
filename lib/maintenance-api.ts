@@ -41,7 +41,7 @@ const MAINTENANCE_CATEGORY_FROM_API: Record<string, MaintenanceCategory> = Objec
 
 const MAINTENANCE_PRIORITY_TO_API: Record<MaintenancePriority, string> = {
   Low: "LOW",
-  Normal: "MEDIUM",
+  Medium: "MEDIUM",
   High: "HIGH",
   Urgent: "URGENT",
 }
@@ -175,7 +175,7 @@ export function maintenanceRequestFromApi(record: ApiMaintenanceSummary): Mainte
     classroomAgeGroup,
     area: record.area ?? classroomAgeGroup ?? "",
     category: MAINTENANCE_CATEGORY_FROM_API[record.category] ?? "Other",
-    priority: MAINTENANCE_PRIORITY_FROM_API[record.priority] ?? "Normal",
+    priority: MAINTENANCE_PRIORITY_FROM_API[record.priority] ?? "Medium",
     submittedBy: record.submittedByName ?? "Unknown",
     submittedById: record.submittedByUserId,
     createdAt: record.createdAt,
@@ -402,6 +402,20 @@ export async function resubmitMaintenanceApprovalApi(id: string, note?: string):
 
 export async function reopenMaintenanceApprovalApi(id: string): Promise<MaintenanceRequest> {
   const record = await apiClient.request<ApiMaintenanceDetail>(`/api/maintenance/${id}/reopen-approval`, {
+    method: "POST",
+  })
+  return maintenanceDetailFromApi(record).request
+}
+
+export async function reopenCancelledMaintenanceRequestApi(id: string): Promise<MaintenanceRequest> {
+  const record = await apiClient.request<ApiMaintenanceDetail>(`/api/maintenance/${id}/reopen-cancelled`, {
+    method: "POST",
+  })
+  return maintenanceDetailFromApi(record).request
+}
+
+export async function reopenCompletedMaintenanceRequestApi(id: string): Promise<MaintenanceRequest> {
+  const record = await apiClient.request<ApiMaintenanceDetail>(`/api/maintenance/${id}/reopen-completed`, {
     method: "POST",
   })
   return maintenanceDetailFromApi(record).request

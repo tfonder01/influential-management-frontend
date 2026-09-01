@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { isApiClientError, uploadFileApi } from "@/lib/maintenance-api"
 
-const priorities: MaintenancePriority[] = ["Low", "Normal", "High", "Urgent"]
+const priorities: MaintenancePriority[] = ["Low", "Medium", "High", "Urgent"]
 const fieldClass = "h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/30 disabled:bg-muted"
 
 export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -36,13 +36,16 @@ export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boole
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [dateReported, setDateReported] = useState("")
-  const [priority, setPriority] = useState<MaintenancePriority>("Normal")
+  const [priority, setPriority] = useState<MaintenancePriority>("Medium")
   const [estimatedCost, setEstimatedCost] = useState("")
   const [approvalRequired, setApprovalRequired] = useState(true)
   const [photoName, setPhotoName] = useState("")
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState("")
+
+  const isOwner = role === "owner"
+  const effectiveApprovalRequired = isOwner ? approvalRequired : true
 
   useEffect(() => {
     if (!open) return
@@ -57,7 +60,7 @@ export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boole
     setCategory("")
     setTitle("")
     setDescription("")
-    setPriority("Normal")
+    setPriority("Medium")
     setEstimatedCost("")
     setApprovalRequired(true)
     setPhotoName("")
@@ -86,7 +89,7 @@ export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boole
         submittedById: currentUser.id,
         createdAt: timestamp,
         lastUpdated: timestamp,
-        approvalStatus: approvalRequired ? "Awaiting Approval" : "Not Required",
+        approvalStatus: effectiveApprovalRequired ? "Awaiting Approval" : "Not Required",
         maintenanceStatus: "Submitted",
         estimatedCost: estimatedCost ? Number(estimatedCost) : undefined,
         originalPhotos: photoName ? [{ name: photoName, uploadedAt: timestamp, uploadedBy: currentUser.name }] : [],
@@ -124,7 +127,7 @@ export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boole
         priority,
         area,
         estimatedCost: estimatedCost ? Number(estimatedCost) : undefined,
-        approvalRequired,
+        approvalRequired: effectiveApprovalRequired,
         fileId,
       })
       reset()
@@ -244,10 +247,20 @@ export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boole
             </div>
 
             <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-muted/25 p-3 sm:col-span-2">
-              <input type="checkbox" className="mt-0.5 h-4 w-4 accent-primary" checked={approvalRequired} onChange={(event) => setApprovalRequired(event.target.checked)} disabled={submitting} />
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-primary disabled:cursor-not-allowed disabled:opacity-70"
+                checked={effectiveApprovalRequired}
+                onChange={(event) => setApprovalRequired(event.target.checked)}
+                disabled={submitting || !isOwner}
+              />
               <span>
                 <span className="block text-sm font-medium text-foreground">Approval required before work proceeds</span>
-                <span className="text-xs text-muted-foreground">Owner approval will be requested. Approval and repair progress are tracked separately.</span>
+                <span className="text-xs text-muted-foreground">
+                  {isOwner
+                    ? "Owner approval will be requested. Approval and repair progress are tracked separately."
+                    : "Owner approval is required for requests submitted by staff."}
+                </span>
               </span>
             </label>
 

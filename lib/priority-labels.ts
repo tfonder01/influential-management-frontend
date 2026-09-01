@@ -1,13 +1,12 @@
 import type { MaintenancePriority } from "./types"
 
 /**
- * Client requested renaming "Normal" to "Medium" in the UI. The persisted/internal value
- * remains "Normal" for backward compatibility with existing Maintenance and Supply Request
- * records; only the displayed label changes.
+ * Priority display labels for Maintenance and Supply requests. The canonical value set is
+ * Low / Medium / High / Urgent across backend and frontend — no "Normal" value is used.
  */
 export const PRIORITY_LABELS: Record<MaintenancePriority, string> = {
   Low: "Low",
-  Normal: "Medium",
+  Medium: "Medium",
   High: "High",
   Urgent: "Urgent",
 }

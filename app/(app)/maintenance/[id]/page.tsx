@@ -118,6 +118,8 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     requestMaintenanceInfoProduction,
     resubmitProductionMaintenanceApproval,
     reopenProductionMaintenanceApproval,
+    reopenCancelledProductionMaintenanceRequest,
+    reopenCompletedProductionMaintenanceRequest,
     addProductionMaintenanceAttachment,
     removeProductionMaintenanceAttachment,
     replaceProductionMaintenanceAttachment,
@@ -136,6 +138,9 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
   const [renameValue, setRenameValue] = useState("")
   const [renameSubmitting, setRenameSubmitting] = useState(false)
   const [replaceContext, setReplaceContext] = useState<{ attachment: MaintenanceAttachment; field: "originalPhotos" | "completionPhotos" | "invoices"; accept: string } | null>(null)
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
+  const [removeAttachmentTarget, setRemoveAttachmentTarget] = useState<MaintenanceAttachment | null>(null)
   const replaceInputRef = useRef<HTMLInputElement>(null)
   const [approvalAction, setApprovalAction] = useState<string | null>(null)
   const [infoNoteOpen, setInfoNoteOpen] = useState(false)
@@ -154,7 +159,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
   const [editDescription, setEditDescription] = useState("")
   const [editArea, setEditArea] = useState("")
   const [editCategory, setEditCategory] = useState<MaintenanceCategory | "">("")
-  const [editPriority, setEditPriority] = useState<MaintenancePriority>("Normal")
+  const [editPriority, setEditPriority] = useState<MaintenancePriority>("Medium")
   const [editEstimatedCost, setEditEstimatedCost] = useState("")
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState("")
@@ -212,6 +217,10 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     && request.approvalStatus !== "Awaiting Approval"
     && request.approvalStatus !== "Needs Information"
     && request.approvalStatus !== "Declined"
+    && request.maintenanceStatus !== "Cancelled"
+  // Cancelling is a withdraw action available regardless of where the approval decision stands
+  // (unlike In Progress/Waiting/Complete, which require approval to be resolved first).
+  const canCancel = canEdit && request.maintenanceStatus !== "Cancelled" && request.maintenanceStatus !== "Completed"
   const canReopenApprovalReview = request.maintenanceStatus === "Submitted" || request.maintenanceStatus === "Approved / Ready"
   const potentialRepeatIssue = hasPotentialRepeatHistory(request)
   const progressSteps = ["Submitted", "Approved / Ready", "In Progress", "Completed"] as const
@@ -253,6 +262,44 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     } finally {
       setStatusAction(null)
     }
+  }
+
+  const reopenCancelledRequest = async () => {
+    if (statusAction || approvalAction) return
+    if (isDemoMode) {
+      const target = request.approvalStatus === "Approved" || request.approvalStatus === "Not Required" ? "Approved / Ready" : "Submitted"
+      updateMaintenanceRequest(id, { maintenanceStatus: target }, "Maintenance request reopened.")
+      return
+    }
+    setStatusAction("reopen-cancelled")
+    try {
+      await reopenCancelledProductionMaintenanceRequest(id)
+    } catch {
+      // Toast handled in the store action.
+    } finally {
+      setStatusAction(null)
+    }
+  }
+
+  const reopenCompletedRequest = async () => {
+    if (statusAction || approvalAction) return
+    if (isDemoMode) {
+      updateMaintenanceRequest(id, { maintenanceStatus: "In Progress", completedAt: undefined }, "Maintenance request reopened. Status set to In Progress.")
+      return
+    }
+    setStatusAction("reopen-completed")
+    try {
+      await reopenCompletedProductionMaintenanceRequest(id)
+    } catch {
+      // Toast handled in the store action.
+    } finally {
+      setStatusAction(null)
+    }
+  }
+
+  const confirmCancel = async () => {
+    setCancelDialogOpen(false)
+    await updateStatus("Cancelled")
   }
 
   const addRequestComment = async () => {
@@ -454,9 +501,15 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     }
   }
 
-  const handleRemoveAttachment = async (attachment: MaintenanceAttachment) => {
+  const requestRemoveAttachment = (attachment: MaintenanceAttachment) => {
     if (!attachment.fileId || fileActionKey) return
-    if (!window.confirm(`Remove ${attachment.displayName ?? attachment.name} from this request?`)) return
+    setRemoveAttachmentTarget(attachment)
+  }
+
+  const confirmRemoveAttachment = async () => {
+    const attachment = removeAttachmentTarget
+    if (!attachment?.fileId || fileActionKey) return
+    setRemoveAttachmentTarget(null)
     setFileActionKey(`remove:${attachment.fileId}`)
     try {
       await removeProductionMaintenanceAttachment(id, attachment.fileId)
@@ -632,7 +685,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => openRenameDialog(item)}><Pencil className="h-3.5 w-3.5" />Rename</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => triggerReplace(item, field, accept)}><RefreshCw className="h-3.5 w-3.5" />Replace</DropdownMenuItem>
-                                <DropdownMenuItem variant="destructive" onClick={() => void handleRemoveAttachment(item)}><Trash2 className="h-3.5 w-3.5" />Remove</DropdownMenuItem>
+                                <DropdownMenuItem variant="destructive" onClick={() => requestRemoveAttachment(item)}><Trash2 className="h-3.5 w-3.5" />Remove</DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           )}
@@ -700,9 +753,15 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
 
                 {request.approvalStatus === "Approved" && (
                   <>
-                    <p className="text-sm text-emerald-700">Approved.</p>
-                    {role === "owner" && canReopenApprovalReview && (
-                      <Button variant="outline" className="w-full justify-start gap-2" size="sm" onClick={() => void (isDemoMode ? Promise.resolve(updateMaintenanceRequest(id, { approvalStatus: "Awaiting Approval", maintenanceStatus: request.maintenanceStatus === "Approved / Ready" ? "Submitted" : request.maintenanceStatus }, "Approval review reopened. Awaiting Owner decision.")) : runApprovalAction("reopen-review", () => reopenProductionMaintenanceApproval(id).then(() => undefined)))} disabled={Boolean(approvalAction)}>{approvalAction === "reopen-review" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Reopen Approval Review</Button>
+                    {request.maintenanceStatus === "Cancelled" ? (
+                      <p className="text-sm text-muted-foreground">This request was approved, but the repair workflow has been cancelled.</p>
+                    ) : (
+                      <>
+                        <p className="text-sm text-emerald-700">Approved.</p>
+                        {role === "owner" && canReopenApprovalReview && (
+                          <Button variant="outline" className="w-full justify-start gap-2" size="sm" onClick={() => void (isDemoMode ? Promise.resolve(updateMaintenanceRequest(id, { approvalStatus: "Awaiting Approval", maintenanceStatus: request.maintenanceStatus === "Approved / Ready" ? "Submitted" : request.maintenanceStatus }, "Approval review reopened. Awaiting Owner decision.")) : runApprovalAction("reopen-review", () => reopenProductionMaintenanceApproval(id).then(() => undefined)))} disabled={Boolean(approvalAction)}>{approvalAction === "reopen-review" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Reopen Approval Review</Button>
+                        )}
+                      </>
                     )}
                   </>
                 )}
@@ -712,11 +771,28 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
 
           <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-semibold text-foreground">Repair progress</h2>
-            <div className="mt-3 grid gap-2">
-              <Button variant="outline" size="sm" className="justify-start gap-2" onClick={() => void updateStatus("In Progress")} disabled={!canChangeProgress || request.maintenanceStatus === "In Progress" || Boolean(statusAction)}>{statusAction === "In Progress" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4 text-indigo-600" />}Mark In Progress</Button>
-              <Button variant="outline" size="sm" className="justify-start gap-2" onClick={() => void updateStatus("Waiting")} disabled={!canChangeProgress || request.maintenanceStatus === "Waiting" || Boolean(statusAction)}>{statusAction === "Waiting" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PauseCircle className="h-4 w-4 text-amber-600" />}Mark Waiting</Button>
-              <Button variant="outline" size="sm" className="justify-start gap-2" onClick={() => void updateStatus("Completed")} disabled={!canChangeProgress || request.maintenanceStatus === "Completed" || Boolean(statusAction)}>{statusAction === "Completed" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4 text-emerald-600" />}Mark Complete</Button>
-            </div>
+            {request.maintenanceStatus === "Cancelled" ? (
+              <>
+                <p className="mt-1 text-xs text-muted-foreground">Repair workflow cancelled. Its history has been preserved and it can be reopened.</p>
+                <div className="mt-3">
+                  <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={() => void reopenCancelledRequest()} disabled={!canEdit || Boolean(statusAction)}>{statusAction === "reopen-cancelled" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Reopen Maintenance Request</Button>
+                </div>
+              </>
+            ) : request.maintenanceStatus === "Completed" ? (
+              <>
+                <p className="mt-1 text-xs text-muted-foreground">Repair completed{request.completedAt ? ` on ${new Date(request.completedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}` : ""}.</p>
+                <div className="mt-3">
+                  <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={() => void reopenCompletedRequest()} disabled={!canEdit || Boolean(statusAction)}>{statusAction === "reopen-completed" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Reopen Maintenance Request</Button>
+                </div>
+              </>
+            ) : (
+              <div className="mt-3 grid gap-2">
+                <Button variant="outline" size="sm" className="justify-start gap-2" onClick={() => void updateStatus("In Progress")} disabled={!canChangeProgress || request.maintenanceStatus === "In Progress" || Boolean(statusAction)}>{statusAction === "In Progress" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4 text-indigo-600" />}Mark In Progress</Button>
+                <Button variant="outline" size="sm" className="justify-start gap-2" onClick={() => void updateStatus("Waiting")} disabled={!canChangeProgress || request.maintenanceStatus === "Waiting" || Boolean(statusAction)}>{statusAction === "Waiting" ? <Loader2 className="h-4 w-4 animate-spin" /> : <PauseCircle className="h-4 w-4 text-amber-600" />}Mark Waiting</Button>
+                <Button variant="outline" size="sm" className="justify-start gap-2" onClick={() => void updateStatus("Completed")} disabled={!canChangeProgress || Boolean(statusAction)}>{statusAction === "Completed" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4 text-emerald-600" />}Mark Complete</Button>
+                <Button variant="ghost" size="sm" className="justify-start gap-2 text-rose-700" onClick={() => setCancelDialogOpen(true)} disabled={!canCancel || Boolean(statusAction)}>{statusAction === "Cancelled" ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}Cancel</Button>
+              </div>
+            )}
           </section>
 
           <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
@@ -745,7 +821,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
 
           {role === "owner" && (
             <section className="order-8 rounded-xl border border-border bg-card p-4 shadow-sm">
-              {request.archived ? <Button variant="outline" className="w-full justify-start gap-2" onClick={() => restoreMaintenanceRequest(id)}><RotateCcw className="h-4 w-4" />Restore request</Button> : <Button variant="outline" className="w-full justify-start gap-2 text-muted-foreground" onClick={() => { archiveMaintenanceRequest(id); router.push("/archived") }}><Archive className="h-4 w-4" />Archive request</Button>}
+              {request.archived ? <Button variant="outline" className="w-full justify-start gap-2" onClick={() => restoreMaintenanceRequest(id)}><RotateCcw className="h-4 w-4" />Restore request</Button> : <Button variant="outline" className="w-full justify-start gap-2 text-muted-foreground" onClick={() => setArchiveDialogOpen(true)}><Archive className="h-4 w-4" />Archive request</Button>}
               <p className="mt-2 text-[11px] text-muted-foreground">No permanent delete. Repair history remains intact.</p>
             </section>
           )}
@@ -758,6 +834,45 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
         fileId={previewFile?.fileId ?? null}
         filename={previewFile?.name ?? "Attachment preview"}
       />
+
+      <Dialog open={cancelDialogOpen} onOpenChange={(open) => { if (!open && !statusAction) setCancelDialogOpen(false) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel this maintenance request?</DialogTitle>
+            <DialogDescription>This will stop the current repair workflow. The request and its history will be preserved, and it can be reopened later.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelDialogOpen(false)} disabled={Boolean(statusAction)}>Keep Request</Button>
+            <Button variant="destructive" className="gap-2" onClick={() => void confirmCancel()} disabled={Boolean(statusAction)}>{statusAction === "Cancelled" && <Loader2 className="h-4 w-4 animate-spin" />}Cancel Request</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={archiveDialogOpen} onOpenChange={(open) => setArchiveDialogOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Archive this maintenance request?</DialogTitle>
+            <DialogDescription>This request will be removed from active views but its history will be preserved. An Owner can restore it later.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setArchiveDialogOpen(false)}>Keep Active</Button>
+            <Button variant="destructive" onClick={() => { setArchiveDialogOpen(false); archiveMaintenanceRequest(id); router.push("/archived") }}>Archive Request</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(removeAttachmentTarget)} onOpenChange={(open) => { if (!open) setRemoveAttachmentTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove this attachment?</DialogTitle>
+            <DialogDescription>This will remove the attachment from this request. The stored file may be retained temporarily for recovery or cleanup.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveAttachmentTarget(null)} disabled={Boolean(fileActionKey)}>Keep Attachment</Button>
+            <Button variant="destructive" className="gap-2" onClick={() => void confirmRemoveAttachment()} disabled={Boolean(fileActionKey)}>{fileActionKey?.startsWith("remove:") && <Loader2 className="h-4 w-4 animate-spin" />}Remove Attachment</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(renameTarget)} onOpenChange={(open) => { if (!open) setRenameTarget(null) }}>
         <DialogContent>
@@ -822,7 +937,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
               <div className="space-y-1.5">
                 <Label htmlFor="edit-priority">Priority</Label>
                 <select id="edit-priority" className={fieldClass} value={editPriority} onChange={(event) => setEditPriority(event.target.value as MaintenancePriority)} disabled={editSaving}>
-                  {(["Low", "Normal", "High", "Urgent"] as MaintenancePriority[]).map((item) => <option key={item} value={item}>{priorityLabel(item)}</option>)}
+                  {(["Low", "Medium", "High", "Urgent"] as MaintenancePriority[]).map((item) => <option key={item} value={item}>{priorityLabel(item)}</option>)}
                 </select>
               </div>
               <div className="space-y-1.5"><Label htmlFor="edit-estimated-cost">Estimated cost</Label><Input id="edit-estimated-cost" type="number" min="0" step="0.01" value={editEstimatedCost} onChange={(event) => setEditEstimatedCost(event.target.value)} disabled={editSaving} /></div>

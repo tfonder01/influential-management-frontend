@@ -51,6 +51,8 @@ import {
   requestMaintenanceInfoApi,
   resubmitMaintenanceApprovalApi,
   reopenMaintenanceApprovalApi,
+  reopenCancelledMaintenanceRequestApi,
+  reopenCompletedMaintenanceRequestApi,
   removeMaintenanceAttachmentApi,
   renameMaintenanceAttachmentApi,
   replaceMaintenanceAttachmentApi,
@@ -61,6 +63,32 @@ import {
   type CreateMaintenanceInput,
   type UpdateMaintenanceInput,
 } from "./maintenance-api"
+import {
+  addSupplyAttachmentApi,
+  addSupplyCommentApi,
+  approveSupplyRequestApi,
+  archiveSupplyRequestApi,
+  changeSupplyStatusApi,
+  createSupplyRequestApi,
+  declineSupplyRequestApi,
+  getSupplyDetail,
+  listAllSupplyRequests,
+  listSupplyCommentsApi,
+  removeSupplyAttachmentApi,
+  renameSupplyAttachmentApi,
+  replaceSupplyAttachmentApi,
+  reopenSupplyApprovalApi,
+  reopenReceivedSupplyRequestApi,
+  reopenCancelledSupplyRequestApi,
+  requestSupplyInfoApi,
+  resubmitSupplyApprovalApi,
+  restoreSupplyRequestApi,
+  supplyCommentFromApi,
+  updateSupplyRequestApi,
+  type ApiSupplyAttachmentType,
+  type CreateSupplyInput,
+  type UpdateSupplyInput,
+} from "./supply-api"
 
 function productionErrorMessage(error: unknown, fallback: string): string {
   if (isApiClientError(error)) return error.message || fallback
@@ -108,6 +136,15 @@ function mergeMaintenanceSummaries(previous: MaintenanceRequest[], summaries: Ma
   })
 }
 
+function mergeSupplySummaries(previous: SupplyRequest[], summaries: SupplyRequest[]): SupplyRequest[] {
+  const previousById = new Map(previous.map((request) => [request.id, request]))
+  return summaries.map((summary) => {
+    const detail = previousById.get(summary.id)
+    if (!detail) return summary
+    return { ...summary, description: detail.description, approvalNote: detail.approvalNote, vendorContact: detail.vendorContact, photos: detail.photos }
+  })
+}
+
 interface AppState {
   role: Role
   setRole: (role: Role) => void
@@ -146,6 +183,8 @@ interface AppState {
   requestMaintenanceInfoProduction: (id: string, note?: string) => Promise<MaintenanceRequest>
   resubmitProductionMaintenanceApproval: (id: string, note?: string) => Promise<MaintenanceRequest>
   reopenProductionMaintenanceApproval: (id: string) => Promise<MaintenanceRequest>
+  reopenCancelledProductionMaintenanceRequest: (id: string) => Promise<MaintenanceRequest>
+  reopenCompletedProductionMaintenanceRequest: (id: string) => Promise<MaintenanceRequest>
   addProductionMaintenanceAttachment: (id: string, fileId: string, type: ApiMaintenanceAttachmentType) => Promise<void>
   removeProductionMaintenanceAttachment: (id: string, fileId: string) => Promise<void>
   replaceProductionMaintenanceAttachment: (id: string, oldFileId: string, newFileId: string, type?: ApiMaintenanceAttachmentType) => Promise<void>
@@ -164,6 +203,26 @@ interface AppState {
   archiveSupplyRequest: (id: string) => void
   restoreSupplyRequest: (id: string) => void
   addSupplyPhoto: (id: string, fileName: string) => void
+  supplyRequestsLoading: boolean
+  supplyRequestsError: string | null
+  refreshSupplyRequests: () => Promise<void>
+  upsertSupplyRequest: (request: SupplyRequest) => void
+  loadSupplyComments: (recordId: string) => Promise<void>
+  createProductionSupplyRequest: (input: CreateSupplyInput) => Promise<SupplyRequest>
+  updateProductionSupplyRequest: (id: string, input: UpdateSupplyInput) => Promise<SupplyRequest>
+  changeProductionSupplyStatus: (id: string, status: "Approved / Ready" | "Ordered" | "Waiting / In Transit" | "Received" | "Cancelled") => Promise<SupplyRequest>
+  approveProductionSupplyRequest: (id: string, note?: string) => Promise<SupplyRequest>
+  declineProductionSupplyRequest: (id: string, note?: string) => Promise<SupplyRequest>
+  requestSupplyInfoProduction: (id: string, note?: string) => Promise<SupplyRequest>
+  resubmitProductionSupplyApproval: (id: string, note?: string) => Promise<SupplyRequest>
+  reopenProductionSupplyApproval: (id: string) => Promise<SupplyRequest>
+  reopenReceivedProductionSupplyRequest: (id: string) => Promise<SupplyRequest>
+  reopenCancelledProductionSupplyRequest: (id: string) => Promise<SupplyRequest>
+  addProductionSupplyAttachment: (id: string, fileId: string, type: ApiSupplyAttachmentType) => Promise<void>
+  removeProductionSupplyAttachment: (id: string, fileId: string) => Promise<void>
+  replaceProductionSupplyAttachment: (id: string, oldFileId: string, newFileId: string, type?: ApiSupplyAttachmentType) => Promise<void>
+  renameProductionSupplyAttachment: (id: string, fileId: string, displayName: string) => Promise<void>
+  addSupplyComment: (comment: Comment) => Promise<void>
   markNotificationRead: (id: string) => void
   markAllNotificationsRead: () => void
   unreadCount: number
@@ -185,11 +244,14 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
   const [recordsError, setRecordsError] = useState<string | null>(null)
   const [maintenanceRequestsLoading, setMaintenanceRequestsLoading] = useState(false)
   const [maintenanceRequestsError, setMaintenanceRequestsError] = useState<string | null>(null)
+  const [supplyRequestsLoading, setSupplyRequestsLoading] = useState(false)
+  const [supplyRequestsError, setSupplyRequestsError] = useState<string | null>(null)
   const [comments, setComments] = useState<Comment[]>(INITIAL_COMMENTS)
   const [activity, setActivity] = useState<ActivityEvent[]>(INITIAL_ACTIVITY)
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS)
   const [allMaintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>(INITIAL_MAINTENANCE_REQUESTS)
   const [allSupplyRequests, setSupplyRequests] = useState<SupplyRequest[]>(INITIAL_SUPPLY_REQUESTS)
+  const [productionSupplyRequests, setProductionSupplyRequests] = useState<SupplyRequest[]>([])
   const [toasts, setToasts] = useState<ToastMessage[]>([])
 
   const currentUser = useMemo(() => productionUser
@@ -252,6 +314,16 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       .finally(() => { if (!cancelled) setRecordsLoading(false) })
     return () => { cancelled = true }
   }, [productionMode])
+  useEffect(() => {
+    if (!productionMode) return
+    let cancelled = false
+    setSupplyRequestsLoading(true)
+    listAllSupplyRequests()
+      .then((requests) => { if (!cancelled) setProductionSupplyRequests((previous) => mergeSupplySummaries(previous, requests)) })
+      .catch((error) => { if (!cancelled) setSupplyRequestsError(productionErrorMessage(error, "Failed to load supply requests")) })
+      .finally(() => { if (!cancelled) setSupplyRequestsLoading(false) })
+    return () => { cancelled = true }
+  }, [productionMode])
 
   const upsertRecord = useCallback((record: ComplianceRecord) => {
     setProductionRecords((prev) => {
@@ -274,6 +346,20 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       setMaintenanceRequestsError(productionErrorMessage(error, "Failed to load maintenance requests"))
     } finally {
       setMaintenanceRequestsLoading(false)
+    }
+  }, [productionMode])
+
+  const refreshSupplyRequests = useCallback(async () => {
+    if (!productionMode) return
+    setSupplyRequestsLoading(true)
+    setSupplyRequestsError(null)
+    try {
+      const requests = await listAllSupplyRequests()
+      setProductionSupplyRequests((previous) => mergeSupplySummaries(previous, requests))
+    } catch (error) {
+      setSupplyRequestsError(productionErrorMessage(error, "Failed to load supply requests"))
+    } finally {
+      setSupplyRequestsLoading(false)
     }
   }, [productionMode])
 
@@ -304,6 +390,16 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     })
   }, [])
 
+  const upsertSupplyRequest = useCallback((request: SupplyRequest) => {
+    setProductionSupplyRequests((prev) => {
+      const index = prev.findIndex((existing) => existing.id === request.id)
+      if (index === -1) return [request, ...prev]
+      const next = [...prev]
+      next[index] = { ...next[index], ...request }
+      return next
+    })
+  }, [])
+
   const maintenanceRequests = productionMode
     ? productionMaintenanceRequests
     : role === "owner"
@@ -311,10 +407,10 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       : allMaintenanceRequests.filter((request) => request.locationId === currentUser.locationId)
 
   const supplyRequests = productionMode
-    ? []
+    ? productionSupplyRequests
     : role === "owner"
-    ? allSupplyRequests
-    : allSupplyRequests.filter((request) => request.locationId === currentUser.locationId)
+      ? allSupplyRequests
+      : allSupplyRequests.filter((request) => request.locationId === currentUser.locationId)
 
   const visibleRecordIds = new Set(records.map((record) => record.id))
   const visibleMaintenanceIds = new Set(maintenanceRequests.map((request) => request.id))
@@ -513,6 +609,20 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     [productionMode, currentUser]
   )
 
+  const loadSupplyComments = useCallback(
+    async (recordId: string) => {
+      if (!productionMode) return
+      try {
+        const apiComments = await listSupplyCommentsApi(recordId)
+        const mapped = apiComments.map((comment) => supplyCommentFromApi(comment, recordId, currentUser.id, currentUser.role))
+        setProductionComments((prev) => [...prev.filter((comment) => comment.recordId !== recordId), ...mapped])
+      } catch {
+        // Comments are supplementary to the supply detail view; a failed fetch should not block the page.
+      }
+    },
+    [productionMode, currentUser]
+  )
+
   const refreshMaintenanceDetail = useCallback(
     async (id: string) => {
       const detail = await getMaintenanceDetail(id)
@@ -520,6 +630,15 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       return detail.request
     },
     [upsertMaintenanceRequest]
+  )
+
+  const refreshSupplyDetail = useCallback(
+    async (id: string) => {
+      const detail = await getSupplyDetail(id)
+      upsertSupplyRequest(detail.request)
+      return detail.request
+    },
+    [upsertSupplyRequest]
   )
 
   const addRecord = useCallback(
@@ -691,6 +810,36 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     [upsertMaintenanceRequest, showToast]
   )
 
+  const reopenCancelledProductionMaintenanceRequest = useCallback(
+    async (id: string) => {
+      try {
+        const request = await reopenCancelledMaintenanceRequestApi(id)
+        upsertMaintenanceRequest(request)
+        showToast("Maintenance request reopened.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to reopen maintenance request"))
+        throw error
+      }
+    },
+    [upsertMaintenanceRequest, showToast]
+  )
+
+  const reopenCompletedProductionMaintenanceRequest = useCallback(
+    async (id: string) => {
+      try {
+        const request = await reopenCompletedMaintenanceRequestApi(id)
+        upsertMaintenanceRequest(request)
+        showToast("Maintenance request reopened. Status set to In Progress.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to reopen maintenance request"))
+        throw error
+      }
+    },
+    [upsertMaintenanceRequest, showToast]
+  )
+
   const addProductionMaintenanceAttachment = useCallback(
     async (id: string, fileId: string, type: ApiMaintenanceAttachmentType) => {
       try {
@@ -752,6 +901,220 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       try {
         const saved = await addMaintenanceCommentApi(comment.recordId, comment.text)
         const mapped = maintenanceCommentFromApi(saved, comment.recordId, currentUser.id, currentUser.role)
+        setProductionComments((prev) => [...prev, mapped])
+        showToast("Comment added")
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to add comment"))
+        throw error
+      }
+    },
+    [currentUser, showToast]
+  )
+
+  const createProductionSupplyRequest = useCallback(
+    async (input: CreateSupplyInput) => {
+      const request = await createSupplyRequestApi(input)
+      upsertSupplyRequest(request)
+      showToast("Supply request submitted")
+      return request
+    },
+    [upsertSupplyRequest, showToast]
+  )
+
+  const updateProductionSupplyRequest = useCallback(
+    async (id: string, input: UpdateSupplyInput) => {
+      const detail = await updateSupplyRequestApi(id, input)
+      upsertSupplyRequest(detail.request)
+      showToast("Request details updated.")
+      return detail.request
+    },
+    [upsertSupplyRequest, showToast]
+  )
+
+  const changeProductionSupplyStatus = useCallback(
+    async (id: string, status: "Approved / Ready" | "Ordered" | "Waiting / In Transit" | "Received" | "Cancelled") => {
+      try {
+        const request = await changeSupplyStatusApi(id, status)
+        upsertSupplyRequest(request)
+        showToast(`Supply status changed to ${status}.`)
+        return request
+      } catch (error) {
+        const message = isApiClientError(error) && error.status === 409 && error.code === "APPROVAL_PENDING"
+          ? "This request is awaiting Owner approval before progress can change."
+          : productionErrorMessage(error, "Failed to update supply status")
+        showToast(message)
+        throw error
+      }
+    },
+    [upsertSupplyRequest, showToast]
+  )
+
+  const approveProductionSupplyRequest = useCallback(
+    async (id: string, note?: string) => {
+      try {
+        const request = await approveSupplyRequestApi(id, note)
+        upsertSupplyRequest(request)
+        showToast("Owner approved the supply request.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to approve supply request"))
+        throw error
+      }
+    },
+    [upsertSupplyRequest, showToast]
+  )
+
+  const declineProductionSupplyRequest = useCallback(
+    async (id: string, note?: string) => {
+      try {
+        const request = await declineSupplyRequestApi(id, note)
+        upsertSupplyRequest(request)
+        showToast("Owner declined the supply request.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to decline supply request"))
+        throw error
+      }
+    },
+    [upsertSupplyRequest, showToast]
+  )
+
+  const requestSupplyInfoProduction = useCallback(
+    async (id: string, note?: string) => {
+      try {
+        const request = await requestSupplyInfoApi(id, note)
+        upsertSupplyRequest(request)
+        showToast("Owner requested more information.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to request more information"))
+        throw error
+      }
+    },
+    [upsertSupplyRequest, showToast]
+  )
+
+  const resubmitProductionSupplyApproval = useCallback(
+    async (id: string, note?: string) => {
+      try {
+        const request = await resubmitSupplyApprovalApi(id, note)
+        upsertSupplyRequest(request)
+        showToast("Request resubmitted for approval.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to resubmit request for approval"))
+        throw error
+      }
+    },
+    [upsertSupplyRequest, showToast]
+  )
+
+  const reopenProductionSupplyApproval = useCallback(
+    async (id: string) => {
+      try {
+        const request = await reopenSupplyApprovalApi(id)
+        upsertSupplyRequest(request)
+        showToast("Approval reopened. Awaiting Owner decision.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to reopen approval"))
+        throw error
+      }
+    },
+    [upsertSupplyRequest, showToast]
+  )
+
+  const reopenReceivedProductionSupplyRequest = useCallback(
+    async (id: string) => {
+      try {
+        const request = await reopenReceivedSupplyRequestApi(id)
+        upsertSupplyRequest(request)
+        showToast("Supply request reopened. Status set to Ordered.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to reopen supply request"))
+        throw error
+      }
+    },
+    [upsertSupplyRequest, showToast]
+  )
+
+  const reopenCancelledProductionSupplyRequest = useCallback(
+    async (id: string) => {
+      try {
+        const request = await reopenCancelledSupplyRequestApi(id)
+        upsertSupplyRequest(request)
+        showToast("Supply request reopened.")
+        return request
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to reopen supply request"))
+        throw error
+      }
+    },
+    [upsertSupplyRequest, showToast]
+  )
+
+  const addProductionSupplyAttachment = useCallback(
+    async (id: string, fileId: string, type: ApiSupplyAttachmentType) => {
+      try {
+        await addSupplyAttachmentApi(id, fileId, type)
+        await refreshSupplyDetail(id)
+        showToast(type === "REQUEST_PHOTO" ? "Photo attached" : "File attached")
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to attach file"))
+        throw error
+      }
+    },
+    [refreshSupplyDetail, showToast]
+  )
+
+  const removeProductionSupplyAttachment = useCallback(
+    async (id: string, fileId: string) => {
+      try {
+        await removeSupplyAttachmentApi(id, fileId)
+        await refreshSupplyDetail(id)
+        showToast("Attachment removed")
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to remove attachment"))
+        throw error
+      }
+    },
+    [refreshSupplyDetail, showToast]
+  )
+
+  const replaceProductionSupplyAttachment = useCallback(
+    async (id: string, oldFileId: string, newFileId: string, type?: ApiSupplyAttachmentType) => {
+      try {
+        await replaceSupplyAttachmentApi(id, oldFileId, newFileId, type)
+        await refreshSupplyDetail(id)
+        showToast("Attachment replaced")
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to replace attachment"))
+        throw error
+      }
+    },
+    [refreshSupplyDetail, showToast]
+  )
+
+  const renameProductionSupplyAttachment = useCallback(
+    async (id: string, fileId: string, displayName: string) => {
+      try {
+        await renameSupplyAttachmentApi(id, fileId, displayName)
+        await refreshSupplyDetail(id)
+        showToast("Attachment renamed")
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to rename attachment"))
+        throw error
+      }
+    },
+    [refreshSupplyDetail, showToast]
+  )
+
+  const addSupplyComment = useCallback(
+    async (comment: Comment) => {
+      try {
+        const saved = await addSupplyCommentApi(comment.recordId, comment.text)
+        const mapped = supplyCommentFromApi(saved, comment.recordId, currentUser.id, currentUser.role)
         setProductionComments((prev) => [...prev, mapped])
         showToast("Comment added")
       } catch (error) {
@@ -919,48 +1282,56 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
   }, [productionMode, currentUser, addActivityEvent, showToast])
 
   const addSupplyRequest = useCallback((request: SupplyRequest) => {
+    if (productionMode) {
+      console.warn("addSupplyRequest is demo-only in production mode.", { request })
+      return
+    }
     setSupplyRequests((prev) => [request, ...prev])
-    addActivityEvent({
-      recordId: request.id, type: "created", user: currentUser.name, userId: currentUser.id,
-      role: currentUser.role, timestamp: new Date().toISOString(),
-      detail: request.approvalStatus === "Awaiting Approval" ? "Supply request submitted for Owner approval." : "Supply request submitted.",
-    })
-    setNotifications((prev) => [{
-      id: `snotif_${Date.now()}`, type: "supply", title: request.approvalRequired ? "Supply approval required" : "New supply request",
-      message: `${request.itemName} was requested by ${request.requestedBy}.`, timestamp: new Date().toISOString(),
-      recordId: request.id, source: "supply", isRead: false,
-    }, ...prev])
+    addActivityEvent({ recordId: request.id, type: "created", user: currentUser.name, userId: currentUser.id, role: currentUser.role, timestamp: new Date().toISOString(), detail: request.approvalStatus === "Awaiting Approval" ? "Supply request submitted for Owner approval." : "Supply request submitted." })
+    setNotifications((prev) => [{ id: `snotif_${Date.now()}`, type: "supply", title: request.approvalRequired ? "Supply approval required" : "New supply request", message: `${request.title} was requested by ${request.submittedBy}.`, timestamp: new Date().toISOString(), recordId: request.id, source: "supply", isRead: false }, ...prev])
     showToast("Supply request submitted")
-  }, [currentUser, addActivityEvent, showToast])
+  }, [productionMode, currentUser, addActivityEvent, showToast])
 
   const updateSupplyRequest = useCallback((id: string, updates: Partial<SupplyRequest>, detail = "Supply request updated.") => {
-    setSupplyRequests((prev) => prev.map((request) => request.id === id
-      ? { ...request, ...updates, lastUpdated: new Date().toISOString() }
-      : request))
-    addActivityEvent({
-      recordId: id, type: updates.fulfillmentStatus || updates.approvalStatus ? "status_changed" : "edited",
-      user: currentUser.name, userId: currentUser.id, role: currentUser.role, timestamp: new Date().toISOString(), detail,
-    })
-    if (updates.approvalStatus || updates.fulfillmentStatus) {
-      setNotifications((prev) => [{
-        id: `snotif_${Date.now()}`, type: "supply", title: "Supply request updated", message: detail,
-        timestamp: new Date().toISOString(), recordId: id, source: "supply", isRead: false,
-      }, ...prev])
+    if (productionMode) {
+      console.warn("updateSupplyRequest is demo-only in production mode.", { id, updates, detail })
+      return
     }
+    setSupplyRequests((prev) => prev.map((request) => request.id === id ? { ...request, ...updates, lastUpdated: new Date().toISOString() } : request))
+    addActivityEvent({ recordId: id, type: updates.fulfillmentStatus || updates.approvalStatus ? "status_changed" : "edited", user: currentUser.name, userId: currentUser.id, role: currentUser.role, timestamp: new Date().toISOString(), detail })
+    if (updates.approvalStatus || updates.fulfillmentStatus) setNotifications((prev) => [{ id: `snotif_${Date.now()}`, type: "supply", title: "Supply request updated", message: detail, timestamp: new Date().toISOString(), recordId: id, source: "supply", isRead: false }, ...prev])
     showToast(detail)
-  }, [currentUser, addActivityEvent, showToast])
+  }, [productionMode, currentUser, addActivityEvent, showToast])
 
   const archiveSupplyRequest = useCallback((id: string) => {
+    if (productionMode) {
+      archiveSupplyRequestApi(id)
+        .then((updated) => {
+          upsertSupplyRequest(updated)
+          showToast("Supply request archived")
+        })
+        .catch((error) => showToast(productionErrorMessage(error, "Failed to archive supply request")))
+      return
+    }
     setSupplyRequests((prev) => prev.map((request) => request.id === id ? { ...request, archived: true, lastUpdated: new Date().toISOString() } : request))
     addActivityEvent({ recordId: id, type: "archived", user: currentUser.name, userId: currentUser.id, role: currentUser.role, timestamp: new Date().toISOString(), detail: "Supply request archived." })
     showToast("Supply request archived")
-  }, [currentUser, addActivityEvent, showToast])
+  }, [productionMode, upsertSupplyRequest, currentUser, addActivityEvent, showToast])
 
   const restoreSupplyRequest = useCallback((id: string) => {
+    if (productionMode) {
+      restoreSupplyRequestApi(id)
+        .then((updated) => {
+          upsertSupplyRequest(updated)
+          showToast("Supply request restored")
+        })
+        .catch((error) => showToast(productionErrorMessage(error, "Failed to restore supply request")))
+      return
+    }
     setSupplyRequests((prev) => prev.map((request) => request.id === id ? { ...request, archived: false, lastUpdated: new Date().toISOString() } : request))
     addActivityEvent({ recordId: id, type: "restored", user: currentUser.name, userId: currentUser.id, role: currentUser.role, timestamp: new Date().toISOString(), detail: "Supply request restored from archive." })
     showToast("Supply request restored")
-  }, [currentUser, addActivityEvent, showToast])
+  }, [productionMode, upsertSupplyRequest, currentUser, addActivityEvent, showToast])
 
   const addSupplyPhoto = useCallback((id: string, fileName: string) => {
     const attachment = { name: fileName, uploadedAt: new Date().toISOString(), uploadedBy: currentUser.name }
@@ -1019,6 +1390,8 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
         requestMaintenanceInfoProduction,
         resubmitProductionMaintenanceApproval,
         reopenProductionMaintenanceApproval,
+        reopenCancelledProductionMaintenanceRequest,
+        reopenCompletedProductionMaintenanceRequest,
         addProductionMaintenanceAttachment,
         removeProductionMaintenanceAttachment,
         replaceProductionMaintenanceAttachment,
@@ -1033,6 +1406,26 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
         archiveSupplyRequest,
         restoreSupplyRequest,
         addSupplyPhoto,
+        supplyRequestsLoading,
+        supplyRequestsError,
+        refreshSupplyRequests,
+        upsertSupplyRequest,
+        loadSupplyComments,
+        createProductionSupplyRequest,
+        updateProductionSupplyRequest,
+        changeProductionSupplyStatus,
+        approveProductionSupplyRequest,
+        declineProductionSupplyRequest,
+        requestSupplyInfoProduction,
+        resubmitProductionSupplyApproval,
+        reopenProductionSupplyApproval,
+        reopenReceivedProductionSupplyRequest,
+        reopenCancelledProductionSupplyRequest,
+        addProductionSupplyAttachment,
+        removeProductionSupplyAttachment,
+        replaceProductionSupplyAttachment,
+        renameProductionSupplyAttachment,
+        addSupplyComment,
         markNotificationRead,
         markAllNotificationsRead,
         unreadCount,
