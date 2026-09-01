@@ -732,6 +732,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
                   <>
                     {request.approvalNote && <div className="rounded-lg border border-orange-200 bg-orange-50/60 p-3"><p className="text-xs font-semibold text-orange-800">Information requested</p><p className="mt-1 text-sm text-foreground">{request.approvalNote}</p></div>}
                     <p className="text-sm text-muted-foreground">Waiting for staff response.</p>
+                    <Button variant="outline" className="w-full justify-start gap-2" size="sm" onClick={() => void (isDemoMode ? Promise.resolve(updateMaintenanceRequest(id, { approvalStatus: "Awaiting Approval" }, "Approval returned to Awaiting Approval by Owner.")) : runApprovalAction("reopen-info", () => reopenProductionMaintenanceApproval(id).then(() => undefined)))} disabled={Boolean(approvalAction)}>{approvalAction === "reopen-info" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Return to Awaiting Approval</Button>
                   </>
                 )}
 
