@@ -1,5 +1,6 @@
 import { apiClient } from "./api-client"
 import { downloadFileApi, isApiClientError, uploadFileApi, viewFileApi } from "./records-api"
+import type { CommentMention } from "./mentions-api"
 import type { ClassroomAgeGroup, Comment, SupplyApprovalStatus, SupplyAttachmentType, SupplyCategory, SupplyPriority, SupplyRequest, SupplyStatus } from "./types"
 
 const CATEGORY_TO_API: Record<SupplyCategory, string> = { Supplies: "SUPPLIES", Furniture: "FURNITURE", Fixtures: "FIXTURES", Equipment: "EQUIPMENT", Other: "OTHER" }
@@ -16,7 +17,7 @@ const ATTACHMENT_TYPE_FROM_API: Record<string, SupplyAttachmentType> = { REQUEST
 export interface ApiSupplyAttachment { fileId: string; attachmentType: string; displayName: string | null; originalFilename: string; contentType: string; sizeBytes: number; createdAt: string }
 export interface ApiSupplySummary { id: string; requestNumber: number; locationId: string; locationName: string | null; title: string; category: string; quantity: number; priority: string; approvalStatus: string; status: string; approvalRequired: boolean; classroomAgeGroup: string | null; area: string | null; vendorName: string | null; estimatedCost: number | null; finalCost: number | null; archived: boolean; archivedAt: string | null; submittedByUserId: string; submittedByName: string | null; createdAt: string; updatedAt: string }
 export interface ApiSupplyDetail extends ApiSupplySummary { description: string | null; approvalNote: string | null; vendorContact: string | null; orderDate: string | null; expectedDeliveryDate: string | null; receivedDate: string | null; completedAt: string | null; assignedTo: string | null; updatedByUserId: string | null; updatedByName: string | null; attachments: ApiSupplyAttachment[]; commentCount: number }
-export interface ApiSupplyComment { id: string; authorUserId: string; authorName: string | null; body: string; createdAt: string }
+export interface ApiSupplyComment { id: string; authorUserId: string; authorName: string | null; body: string; createdAt: string; mentions: CommentMention[] }
 
 function toUiAttachments(attachments: ApiSupplyAttachment[], uploadedBy: string): SupplyRequest["photos"] {
   return attachments.map((attachment) => ({ fileId: attachment.fileId, name: attachment.originalFilename, displayName: attachment.displayName ?? undefined, attachmentType: ATTACHMENT_TYPE_FROM_API[attachment.attachmentType], uploadedAt: attachment.createdAt, uploadedBy }))
@@ -74,7 +75,7 @@ export function supplyDetailFromApi(record: ApiSupplyDetail) {
 }
 
 export function supplyCommentFromApi(comment: ApiSupplyComment, supplyId: string, currentUserId: string, currentUserRole: Comment["role"]): Comment {
-  return { id: comment.id, recordId: supplyId, user: comment.authorName ?? "Unknown", userId: comment.authorUserId, role: comment.authorUserId === currentUserId ? currentUserRole : "director", text: comment.body, timestamp: comment.createdAt }
+  return { id: comment.id, recordId: supplyId, user: comment.authorName ?? "Unknown", userId: comment.authorUserId, role: comment.authorUserId === currentUserId ? currentUserRole : "director", text: comment.body, timestamp: comment.createdAt, mentions: comment.mentions }
 }
 
 export async function listSupplyRequests(params: { locationId?: string; status?: string; priority?: string; category?: string; archived?: boolean; search?: string; page?: number; size?: number } = {}) {
@@ -165,7 +166,7 @@ export async function reopenCancelledSupplyRequestApi(id: string): Promise<Suppl
 export const archiveSupplyRequestApi = (id: string) => supplyAction(`/api/supply-requests/${id}/archive`)
 export const restoreSupplyRequestApi = (id: string) => supplyAction(`/api/supply-requests/${id}/restore`)
 export const listSupplyCommentsApi = (id: string) => apiClient.request<ApiSupplyComment[]>(`/api/supply-requests/${id}/comments`)
-export const addSupplyCommentApi = (id: string, body: string) => apiClient.request<ApiSupplyComment>(`/api/supply-requests/${id}/comments`, { method: "POST", body: JSON.stringify({ body }) })
+export const addSupplyCommentApi = (id: string, body: string, mentionedUserIds: string[] = []) => apiClient.request<ApiSupplyComment>(`/api/supply-requests/${id}/comments`, { method: "POST", body: JSON.stringify({ body, mentionedUserIds }) })
 export type ApiSupplyAttachmentType = "REQUEST_PHOTO" | "QUOTE" | "RECEIPT" | "INVOICE" | "OTHER"
 export const addSupplyAttachmentApi = (id: string, fileId: string, attachmentType: ApiSupplyAttachmentType) => apiClient.request<ApiSupplyAttachment>(`/api/supply-requests/${id}/attachments`, { method: "POST", body: JSON.stringify({ fileId, attachmentType }) })
 export const removeSupplyAttachmentApi = (id: string, fileId: string) => apiClient.request<void>(`/api/supply-requests/${id}/attachments/${fileId}`, { method: "DELETE" })

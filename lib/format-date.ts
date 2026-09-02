@@ -33,3 +33,16 @@ export function fmtTime(value: string | Date): string {
   const h = hours % 12 || 12
   return `${h}:${minutes} ${ampm}`
 }
+
+/**
+ * Human-friendly relative age, e.g. "Today", "1d ago", "3d ago", "2w ago".
+ *
+ * `daysAgo` must be computed from an absolute instant diff (epoch milliseconds), not from
+ * local calendar dates, so the result is stable regardless of the browser's timezone.
+ */
+export function fmtAge(daysAgo: number): string {
+  const days = Math.max(0, daysAgo)
+  if (days === 0) return "Today"
+  if (days < 7) return `${days}d ago`
+  return `${Math.floor(days / 7)}w ago`
+}

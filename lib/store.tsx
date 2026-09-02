@@ -673,7 +673,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
   const addComment = useCallback(
     (comment: Comment) => {
       if (productionMode) {
-        addCommentApi(comment.recordId, comment.text)
+        addCommentApi(comment.recordId, comment.text, comment.mentionedUserIds ?? [])
           .then((saved) => {
             const mapped = commentFromApi(saved, comment.recordId, currentUser.id, currentUser.role)
             setProductionComments((prev) => [...prev, mapped])
@@ -899,7 +899,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
   const addMaintenanceComment = useCallback(
     async (comment: Comment) => {
       try {
-        const saved = await addMaintenanceCommentApi(comment.recordId, comment.text)
+        const saved = await addMaintenanceCommentApi(comment.recordId, comment.text, comment.mentionedUserIds ?? [])
         const mapped = maintenanceCommentFromApi(saved, comment.recordId, currentUser.id, currentUser.role)
         setProductionComments((prev) => [...prev, mapped])
         showToast("Comment added")
@@ -1113,7 +1113,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
   const addSupplyComment = useCallback(
     async (comment: Comment) => {
       try {
-        const saved = await addSupplyCommentApi(comment.recordId, comment.text)
+        const saved = await addSupplyCommentApi(comment.recordId, comment.text, comment.mentionedUserIds ?? [])
         const mapped = supplyCommentFromApi(saved, comment.recordId, currentUser.id, currentUser.role)
         setProductionComments((prev) => [...prev, mapped])
         showToast("Comment added")

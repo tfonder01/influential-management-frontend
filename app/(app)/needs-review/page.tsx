@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { AlertCircle, CheckCircle2, ExternalLink, MessageSquareMore, Package, Wrench } from "lucide-react"
+import { AlertCircle, CheckCircle2, ExternalLink, Package, Wrench } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { LOCATIONS } from "@/lib/mock-data"
 import { StatusBadge } from "@/components/status-badge"
@@ -12,6 +12,9 @@ import { getRecordWorkspace } from "@/lib/record-workspaces"
 import { WorkspaceBadge } from "@/components/workspace-badge"
 import { ApprovalStatusBadge, PriorityBadge } from "@/components/maintenance-badges"
 import { SupplyApprovalBadge, SupplyPriorityBadge } from "@/components/supply-badges"
+import { isMaintenanceActionable, isSupplyActionable } from "@/lib/needs-review"
+import { fmtAge } from "@/lib/format-date"
+import { maintenanceDisplayId } from "@/lib/maintenance-display"
 
 export default function NeedsReviewPage() {
   const {
@@ -19,13 +22,7 @@ export default function NeedsReviewPage() {
     updateRecordStatus,
     role,
     maintenanceRequests,
-    updateMaintenanceRequest,
     supplyRequests,
-    updateSupplyRequest,
-    approveProductionMaintenanceRequest,
-    requestMaintenanceInfoProduction,
-    approveProductionSupplyRequest,
-    requestSupplyInfoProduction,
     isDemoMode,
     locations,
   } = useApp()
@@ -52,12 +49,8 @@ export default function NeedsReviewPage() {
 
   const attentionCount = queue.filter((r) => r.status === "Needs Attention").length
   const newCount = queue.filter((r) => r.status === "New").length
-  const maintenanceQueue = role === "owner"
-    ? maintenanceRequests.filter((request) => !request.archived && (request.approvalStatus === "Awaiting Approval" || request.needsMoreInfo))
-    : []
-  const supplyQueue = role === "owner"
-    ? supplyRequests.filter((request) => !request.archived && (request.approvalStatus === "Awaiting Approval" || request.needsMoreInfo))
-    : []
+  const maintenanceQueue = role === "owner" ? maintenanceRequests.filter(isMaintenanceActionable) : []
+  const supplyQueue = role === "owner" ? supplyRequests.filter(isSupplyActionable) : []
 
   return (
     <div className="space-y-5">
@@ -80,13 +73,49 @@ export default function NeedsReviewPage() {
         {role === "owner" && <div className="flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2.5 shadow-sm"><Package className="h-4 w-4 text-teal-700" /><span className="text-sm font-medium text-teal-800">{supplyQueue.length} Supply Actions</span></div>}
       </div>
 
-      {role === "owner" && supplyQueue.length > 0 && <div className="overflow-hidden rounded-xl border border-teal-200 bg-card shadow-sm"><div className="flex items-center gap-3 border-b border-border bg-teal-50/45 px-5 py-4"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-100 text-teal-700"><Package className="h-4 w-4" /></div><div><h2 className="text-sm font-semibold">Supply requests requiring Owner action ({supplyQueue.length})</h2><p className="mt-0.5 text-xs text-muted-foreground">Estimated cost and approval context are shown without mixing approval with fulfillment.</p></div></div><div className="divide-y divide-border">{supplyQueue.map((request) => { const location = (isDemoMode ? LOCATIONS : locations).find((item) => item.id === request.locationId); return <div key={request.id} className="flex flex-col gap-3 px-5 py-4 hover:bg-muted/35 lg:flex-row lg:items-center"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="rounded-md bg-teal-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-700">Supply Request</span><SupplyPriorityBadge priority={request.priority} /><SupplyApprovalBadge status={request.approvalStatus} /></div><Link href={`/supply-requests/${request.id}`} className="mt-2 block truncate text-sm font-semibold hover:text-primary hover:underline">{request.title}</Link><p className="mt-0.5 text-xs text-muted-foreground">{location?.name} · Requested by {request.submittedBy} · <span className="font-semibold text-foreground">{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(request.estimatedTotal)}</span></p><p className="mt-1 text-xs text-amber-700">{request.needsMoreInfo ? "Additional information was requested." : "Owner approval is required before ordering."}</p></div><div className="flex flex-wrap items-center gap-2"><Button size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-600/90" onClick={() => { if (isDemoMode) { updateSupplyRequest(request.id, { approvalStatus: "Approved", fulfillmentStatus: request.fulfillmentStatus === "Submitted" ? "Approved / Ready" : request.fulfillmentStatus, needsMoreInfo: false, approvalNote: "Approved by Owner." }, "Owner approved the supply request."); return } void approveProductionSupplyRequest(request.id, "Approved by Owner.").catch(() => undefined) }}><CheckCircle2 className="h-3.5 w-3.5" />Approve</Button><Button variant="outline" size="sm" className="gap-1.5 text-amber-700" onClick={() => { if (isDemoMode) { updateSupplyRequest(request.id, { needsMoreInfo: true, approvalNote: "Owner requested more information before approval." }, "More information requested."); return } void requestSupplyInfoProduction(request.id, "Owner requested more information before approval.").catch(() => undefined) }}><MessageSquareMore className="h-3.5 w-3.5" />More info</Button><Button render={<Link href={`/supply-requests/${request.id}`} />} nativeButton={false} variant="ghost" size="icon" aria-label={`Open ${request.title}`}><ExternalLink className="h-4 w-4" /></Button></div></div> })}</div></div>}
+      {role === "owner" && supplyQueue.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-teal-200 bg-card shadow-sm">
+          <div className="flex items-center gap-3 border-b border-border bg-teal-50/45 px-5 py-4">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-100 text-teal-700"><Package className="h-4 w-4" /></div>
+            <div><h2 className="text-sm font-semibold">Supply requests requiring Owner action ({supplyQueue.length})</h2><p className="mt-0.5 text-xs text-muted-foreground">Open a request to review full context before approving.</p></div>
+          </div>
+          <div className="divide-y divide-border">
+            {supplyQueue.map((request) => {
+              const location = (isDemoMode ? LOCATIONS : locations).find((item) => item.id === request.locationId)
+              const displayId = request.requestNumber != null ? `SUP-${request.requestNumber}` : request.id
+              return (
+                <div key={request.id} className="flex flex-col gap-3 px-5 py-4 hover:bg-muted/35 lg:flex-row lg:items-center">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-teal-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-700">{displayId}</span>
+                      <SupplyPriorityBadge priority={request.priority} />
+                      <SupplyApprovalBadge status={request.approvalStatus} />
+                    </div>
+                    <Link href={`/supply-requests/${request.id}`} className="mt-2 block truncate text-sm font-semibold hover:text-primary hover:underline">{request.title}</Link>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {location?.name ?? request.locationId}{request.area ? ` · ${request.area}` : ""} · Requested by {request.submittedBy} ·{" "}
+                      <span className="font-semibold text-foreground">{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(request.estimatedTotal)}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-amber-700">{request.needsMoreInfo ? "Additional information was requested." : "Owner approval is required before ordering."}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button render={<Link href={`/supply-requests/${request.id}`} />} nativeButton={false} size="sm" className="gap-1.5">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Review request
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {role === "owner" && maintenanceQueue.length > 0 && (
         <div className="overflow-hidden rounded-xl border border-orange-200 bg-card shadow-sm">
           <div className="flex items-center gap-3 border-b border-border bg-orange-50/45 px-5 py-4">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 text-orange-700"><Wrench className="h-4 w-4" /></div>
-            <div><h2 className="text-sm font-semibold text-foreground">Maintenance requiring Owner action ({maintenanceQueue.length})</h2><p className="mt-0.5 text-xs text-muted-foreground">Approval requests and items needing more information are kept separate from compliance statuses.</p></div>
+            <div><h2 className="text-sm font-semibold text-foreground">Maintenance requiring Owner action ({maintenanceQueue.length})</h2><p className="mt-0.5 text-xs text-muted-foreground">Open a request to review full context before approving.</p></div>
           </div>
           <div className="divide-y divide-border">
             {maintenanceQueue.map((request) => {
@@ -94,15 +123,24 @@ export default function NeedsReviewPage() {
               return (
                 <div key={request.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-muted/35 lg:flex-row lg:items-center">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><span className="rounded-md bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">Maintenance</span><PriorityBadge priority={request.priority} /><ApprovalStatusBadge status={request.approvalStatus} /></div>
+                    <div className="flex flex-wrap items-center gap-2"><span className="rounded-md bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">{maintenanceDisplayId(request)}</span><PriorityBadge priority={request.priority} /><ApprovalStatusBadge status={request.approvalStatus} /></div>
                     <Link href={`/maintenance/${request.id}`} className="mt-2 block truncate text-sm font-semibold text-foreground hover:text-primary hover:underline">{request.title}</Link>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{location?.name} · {request.area} · Submitted by {request.submittedBy}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {location?.name ?? request.locationId} · {request.area} · Submitted by {request.submittedBy}
+                      {request.estimatedCost != null ? (
+                        <>
+                          {" · "}
+                          <span className="font-semibold text-foreground">{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(request.estimatedCost)}</span>
+                        </>
+                      ) : null}
+                    </p>
                     <p className="mt-1 text-xs text-amber-700">{request.needsMoreInfo ? "Additional information was requested." : "Owner approval is required before work proceeds."}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                    <Button size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-600/90" onClick={() => { if (isDemoMode) { updateMaintenanceRequest(request.id, { approvalStatus: "Approved", maintenanceStatus: request.maintenanceStatus === "Submitted" ? "Approved / Ready" : request.maintenanceStatus, needsMoreInfo: false, approvalNote: "Approved by Owner." }, "Owner approved the maintenance request."); return } void approveProductionMaintenanceRequest(request.id, "Approved by Owner.").catch(() => undefined) }}><CheckCircle2 className="h-3.5 w-3.5" />Approve</Button>
-                    <Button variant="outline" size="sm" className="gap-1.5 text-amber-700" onClick={() => { if (isDemoMode) { updateMaintenanceRequest(request.id, { needsMoreInfo: true, approvalNote: "Owner requested more information before approval." }, "Owner requested more information."); return } void requestMaintenanceInfoProduction(request.id, "Owner requested more information before approval.").catch(() => undefined) }}><MessageSquareMore className="h-3.5 w-3.5" />More info</Button>
-                    <Button render={<Link href={`/maintenance/${request.id}`} />} nativeButton={false} variant="ghost" size="icon" aria-label={`Open ${request.title}`}><ExternalLink className="h-4 w-4" /></Button>
+                    <Button render={<Link href={`/maintenance/${request.id}`} />} nativeButton={false} size="sm" className="gap-1.5">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Review request
+                    </Button>
                   </div>
                 </div>
               )
@@ -164,10 +202,12 @@ export default function NeedsReviewPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {queue.map((rec) => {
-                  const location = LOCATIONS.find((l) => l.id === rec.locationId)
-                  const daysAgo = Math.floor(
-                    ((now ?? new Date(rec.uploadDate).getTime()) - new Date(rec.uploadDate).getTime()) / 86400000
-                  )
+                  const location = (isDemoMode ? LOCATIONS : locations).find((l) => l.id === rec.locationId)
+                  // Age reflects when the record was submitted for review (createdAt), not its
+                  // business record/reporting date, which can legitimately be older or newer.
+                  const ageSource = rec.createdAt ?? rec.uploadDate
+                  const ageSourceMs = new Date(ageSource).getTime()
+                  const daysAgo = Math.floor(((now ?? ageSourceMs) - ageSourceMs) / 86400000)
                   return (
                     <tr
                       key={rec.id}
@@ -183,7 +223,7 @@ export default function NeedsReviewPage() {
                         </p>
                       </td>
                       <td className="hidden px-4 py-3.5 text-xs text-foreground md:table-cell">
-                        {location?.name ?? "—"}
+                        {rec.locationName ?? location?.name ?? "—"}
                       </td>
                       <td className="hidden px-4 py-3.5 lg:table-cell">
                         <div className="flex flex-wrap gap-1.5">
@@ -198,7 +238,7 @@ export default function NeedsReviewPage() {
                         <span
                           className={`text-xs font-medium ${daysAgo >= 7 ? "text-red-600" : daysAgo >= 3 ? "text-amber-600" : "text-muted-foreground"}`}
                         >
-                          {daysAgo === 0 ? "Today" : `${daysAgo}d ago`}
+                          {fmtAge(daysAgo)}
                         </span>
                       </td>
                       <td className="px-4 py-3.5">

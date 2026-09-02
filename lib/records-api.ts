@@ -1,4 +1,5 @@
 import { apiClient, type ApiClientError } from "./api-client"
+import type { CommentMention } from "./mentions-api"
 import type {
   ClassroomAgeGroup,
   Comment,
@@ -119,6 +120,7 @@ export interface ApiComment {
   authorName: string | null
   body: string
   createdAt: string
+  mentions: CommentMention[]
 }
 
 export interface ApiPage<T> {
@@ -163,6 +165,7 @@ export function recordFromApi(record: ApiRecordSummary): ComplianceRecord {
     title: record.title,
     customTitle: record.customTitle,
     locationId: record.locationId,
+    locationName: record.locationName ?? undefined,
     category,
     workspace,
     recordType: workspace === "operations" && record.operationsType ? OPERATIONS_TYPE_FROM_API[record.operationsType] : undefined,
@@ -171,6 +174,7 @@ export function recordFromApi(record: ApiRecordSummary): ComplianceRecord {
     uploadedBy: record.createdByName ?? "Unknown",
     uploadedById: record.createdByUserId,
     uploadDate: record.recordDate,
+    createdAt: record.createdAt,
     lastUpdated: record.updatedAt.slice(0, 10),
     description: "",
     fileNames: [],
@@ -223,6 +227,7 @@ export function commentFromApi(comment: ApiComment, recordId: string, currentUse
     role: comment.authorUserId === currentUserId ? currentUserRole : "director",
     text: comment.body,
     timestamp: comment.createdAt,
+    mentions: comment.mentions,
   }
 }
 
@@ -349,8 +354,8 @@ export async function listCommentsApi(id: string): Promise<ApiComment[]> {
   return apiClient.request<ApiComment[]>(`/api/records/${id}/comments`)
 }
 
-export async function addCommentApi(id: string, body: string): Promise<ApiComment> {
-  return apiClient.request<ApiComment>(`/api/records/${id}/comments`, { method: "POST", body: JSON.stringify({ body }) })
+export async function addCommentApi(id: string, body: string, mentionedUserIds: string[] = []): Promise<ApiComment> {
+  return apiClient.request<ApiComment>(`/api/records/${id}/comments`, { method: "POST", body: JSON.stringify({ body, mentionedUserIds }) })
 }
 
 export interface ApiFileMetadata {

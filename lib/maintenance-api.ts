@@ -1,4 +1,5 @@
 import { apiClient } from "./api-client"
+import type { CommentMention } from "./mentions-api"
 import {
   downloadFileApi,
   isApiClientError,
@@ -140,6 +141,7 @@ export interface ApiMaintenanceComment {
   authorName: string | null
   body: string
   createdAt: string
+  mentions: CommentMention[]
 }
 
 function areaPayload(area?: string): { area?: string; classroomAgeGroup?: string } {
@@ -250,6 +252,7 @@ export function maintenanceCommentFromApi(
     role: comment.authorUserId === currentUserId ? currentUserRole : "director",
     text: comment.body,
     timestamp: comment.createdAt,
+    mentions: comment.mentions,
   }
 }
 
@@ -433,10 +436,10 @@ export async function listMaintenanceCommentsApi(id: string): Promise<ApiMainten
   return apiClient.request<ApiMaintenanceComment[]>(`/api/maintenance/${id}/comments`)
 }
 
-export async function addMaintenanceCommentApi(id: string, body: string): Promise<ApiMaintenanceComment> {
+export async function addMaintenanceCommentApi(id: string, body: string, mentionedUserIds: string[] = []): Promise<ApiMaintenanceComment> {
   return apiClient.request<ApiMaintenanceComment>(`/api/maintenance/${id}/comments`, {
     method: "POST",
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({ body, mentionedUserIds }),
   })
 }
 

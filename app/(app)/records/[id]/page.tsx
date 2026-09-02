@@ -27,7 +27,7 @@ import { useApp } from "@/lib/store"
 import { StatusBadge } from "@/components/status-badge"
 import { CategoryBadge } from "@/components/category-badge"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { MentionCommentComposer, MentionText } from "@/components/comment-mentions"
 import { EditRecordModal } from "@/components/edit-record-modal"
 import { FilePreviewModal } from "@/components/file-preview-modal"
 import { cn } from "@/lib/utils"
@@ -128,7 +128,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
     .filter((a) => a.recordId === id)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
 
-  const handleComment = () => {
+  const handleComment = (mentionedUserIds: string[]) => {
     if (!commentText.trim()) return
     const comment: Comment = {
       id: `cmt_${Date.now()}`,
@@ -139,6 +139,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
       text: commentText.trim(),
       timestamp: new Date().toISOString(),
       isUnread: false,
+      mentionedUserIds,
     }
     addComment(comment)
     setCommentText("")
@@ -511,7 +512,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                           cmt.isUnread ? "bg-blue-50 border border-blue-100" : "bg-muted/40"
                         )}
                       >
-                        {cmt.text}
+                        <MentionText text={cmt.text} mentions={cmt.mentions} />
                       </div>
                     </div>
                   </div>
@@ -529,30 +530,17 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                 >
                   {currentUser.initials}
                 </div>
-                <div className="min-w-0 flex-1 space-y-2">
-                  <Textarea
-                    placeholder="Add a comment or follow-up note..."
-                    rows={2}
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                        e.preventDefault()
-                        handleComment()
-                      }
-                    }}
-                    className="text-sm resize-none"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={handleComment}
-                    disabled={!commentText.trim()}
-                    className="min-h-10 w-full gap-1.5 sm:min-h-8 sm:w-auto"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    Send
-                  </Button>
-                </div>
+                <MentionCommentComposer
+                  locationId={record.locationId}
+                  value={commentText}
+                  onChange={setCommentText}
+                  onSubmit={handleComment}
+                  currentUserId={currentUser.id}
+                  isDemoMode={isDemoMode}
+                  rows={2}
+                  placeholder="Add a comment or follow-up note..."
+                  submitLabel="Send"
+                />
               </div>
             )}
           </div>

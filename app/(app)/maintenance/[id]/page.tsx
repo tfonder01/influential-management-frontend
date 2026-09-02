@@ -41,6 +41,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { MentionCommentComposer, MentionText } from "@/components/comment-mentions"
 import {
   Dialog,
   DialogContent,
@@ -302,7 +303,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     await updateStatus("Cancelled")
   }
 
-  const addRequestComment = async () => {
+  const addRequestComment = async (mentionedUserIds: string[]) => {
     if (!commentText.trim() || commentSubmitting) return
     const comment: Comment = {
       id: `mcmt_${Date.now()}`,
@@ -313,6 +314,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
       text: commentText.trim(),
       timestamp: new Date().toISOString(),
       isUnread: false,
+      mentionedUserIds,
     }
     if (isDemoMode) {
       addComment(comment)
@@ -703,8 +705,8 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
 
           <section className="order-6 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-semibold text-foreground">Comments and notes <span className="font-normal text-muted-foreground">({requestComments.length})</span></h2>
-            <div className="mt-4 space-y-4">{requestComments.map((comment) => <div key={comment.id} className="flex gap-3"><div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold", comment.role === "owner" ? "bg-violet-100 text-violet-700" : "bg-teal-100 text-teal-700")}>{comment.user.split(" ").map((part) => part[0]).join("")}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-baseline gap-2"><span className="text-sm font-medium text-foreground">{comment.user}</span><span className="text-[10px] text-muted-foreground">{roleLabel(comment.role)}</span><span className="ml-auto text-[10px] text-muted-foreground">{new Date(comment.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span></div><p className="mt-1 rounded-lg bg-muted/40 px-3.5 py-3 text-sm leading-relaxed text-foreground">{comment.text}</p></div></div>)}{requestComments.length === 0 && <p className="text-sm text-muted-foreground">No comments yet.</p>}</div>
-            {canEdit && <div className="mt-4 flex gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{currentUser.initials}</div><div className="flex-1"><Textarea rows={3} value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder="Add a progress update, question, or note…" disabled={commentSubmitting} /><Button size="sm" className="mt-2 gap-1.5" onClick={() => void addRequestComment()} disabled={!commentText.trim() || commentSubmitting}>{commentSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}Add comment</Button></div></div>}
+            <div className="mt-4 space-y-4">{requestComments.map((comment) => <div key={comment.id} className="flex gap-3"><div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold", comment.role === "owner" ? "bg-violet-100 text-violet-700" : "bg-teal-100 text-teal-700")}>{comment.user.split(" ").map((part) => part[0]).join("")}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-baseline gap-2"><span className="text-sm font-medium text-foreground">{comment.user}</span><span className="text-[10px] text-muted-foreground">{roleLabel(comment.role)}</span><span className="ml-auto text-[10px] text-muted-foreground">{new Date(comment.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span></div><p className="mt-1 rounded-lg bg-muted/40 px-3.5 py-3 text-sm leading-relaxed text-foreground"><MentionText text={comment.text} mentions={comment.mentions} /></p></div></div>)}{requestComments.length === 0 && <p className="text-sm text-muted-foreground">No comments yet.</p>}</div>
+            {canEdit && <div className="mt-4 flex gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{currentUser.initials}</div><MentionCommentComposer locationId={request.locationId} value={commentText} onChange={setCommentText} onSubmit={addRequestComment} currentUserId={currentUser.id} isDemoMode={isDemoMode} disabled={commentSubmitting} rows={3} placeholder="Add a progress update, question, or note…" submitLabel="Add comment" /></div>}
           </section>
         </div>
 
