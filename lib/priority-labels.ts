@@ -1,12 +1,12 @@
 import type { MaintenancePriority } from "./types"
 
 /**
- * Priority display labels for Maintenance and Supply requests. The canonical value set is
- * Low / Medium / High / Urgent across backend and frontend — no "Normal" value is used.
+ * User-facing priority labels for Maintenance and Supply requests. Internal values remain
+ * Low / Medium / High / Urgent so persisted MEDIUM values and API contracts stay unchanged.
  */
 export const PRIORITY_LABELS: Record<MaintenancePriority, string> = {
   Low: "Low",
-  Medium: "Medium",
+  Medium: "Normal",
   High: "High",
   Urgent: "Urgent",
 }

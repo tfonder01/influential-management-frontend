@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, Upload, ChevronDown, Check, Menu } from "lucide-react"
+import { Upload, ChevronDown, Check, Menu } from "lucide-react"
 import { useState } from "react"
 import { useApp } from "@/lib/store"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,7 @@ import { UploadModal } from "@/components/upload-modal"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth"
+import { NotificationBell } from "@/components/notification-bell"
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -36,18 +37,15 @@ const PAGE_TITLES: Record<string, string> = {
 
 
 export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => void; menuOpen?: boolean }) {
-  const { role, setRole, currentUser, notifications, unreadCount, markAllNotificationsRead, markNotificationRead, isDemoMode } =
-    useApp()
+  const { role, setRole, currentUser, isDemoMode } = useApp()
   const { logout } = useAuth()
   const [uploadOpen, setUploadOpen] = useState(false)
-  const [notifOpen, setNotifOpen] = useState(false)
   const pathname = usePathname()
 
   const pageTitle =
     Object.entries(PAGE_TITLES).find(([path]) => pathname === path || pathname.startsWith(path + "/"))?.[1] ??
     "Influential Management"
 
-  const recentNotifs = notifications.slice(0, 5)
   const defaultUploadWorkspace = pathname.startsWith("/operations")
     ? "operations"
     : pathname.startsWith("/records")
@@ -126,80 +124,7 @@ export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => 
           </Button>
 
           {/* Notifications */}
-          <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
-            <DropdownMenuTrigger
-              render={<Button variant="ghost" size="icon" className="relative h-8 w-8" aria-label="Notifications" />}
-            >
-              <Bell className="h-4 w-4" />
-              {unreadCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                  {unreadCount}
-                </span>
-              )}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80">
-              <div className="flex items-center justify-between px-3 py-2">
-                <span className="text-sm font-semibold">Notifications</span>
-                {unreadCount > 0 && (
-                  <button
-                    onClick={markAllNotificationsRead}
-                    className="text-xs text-primary hover:underline"
-                  >
-                    Mark all read
-                  </button>
-                )}
-              </div>
-              <DropdownMenuSeparator />
-              {recentNotifs.length === 0 ? (
-                <div className="px-3 py-4 text-center text-sm text-muted-foreground">No notifications</div>
-              ) : (
-                recentNotifs.map((n) => (
-                  n.recordId ? (
-                    <DropdownMenuLinkItem
-                      key={n.id}
-                      render={<Link href={n.source === "maintenance" ? `/maintenance/${n.recordId}` : `/records/${n.recordId}`} />}
-                      className="flex-col items-start gap-0.5 px-3 py-2"
-                      onClick={() => {
-                        markNotificationRead(n.id)
-                        setNotifOpen(false)
-                      }}
-                    >
-                      <div className="flex w-full flex-col items-start gap-0.5">
-                        <div className="flex w-full items-start gap-2">
-                          {!n.isRead && (
-                            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
-                          )}
-                          <div className={cn("flex-1", n.isRead && "ml-3.5")}>
-                            <p className="text-xs font-medium leading-tight">{n.title}</p>
-                            <p className="mt-0.5 text-xs text-muted-foreground leading-snug">{n.message}</p>
-                            <p className="mt-1 text-[10px] text-muted-foreground">
-                              {n.timestamp.slice(0, 10)}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </DropdownMenuLinkItem>
-                  ) : (
-                    <DropdownMenuItem
-                      key={n.id}
-                      className="flex-col items-start gap-0.5 px-3 py-2"
-                      onClick={() => markNotificationRead(n.id)}
-                    >
-                      <div className="flex w-full items-start gap-2">
-                        {!n.isRead && (
-                          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
-                        )}
-                        <div className={cn("flex-1", n.isRead && "ml-3.5")}>
-                          <p className="text-xs font-medium leading-tight">{n.title}</p>
-                          <p className="mt-0.5 text-xs text-muted-foreground leading-snug">{n.message}</p>
-                        </div>
-                      </div>
-                    </DropdownMenuItem>
-                  )
-                ))
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <NotificationBell />
 
           {/* User Avatar */}
           <DropdownMenu>
