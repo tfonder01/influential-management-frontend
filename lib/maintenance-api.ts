@@ -102,6 +102,9 @@ export interface ApiMaintenanceSummary {
   classroomAgeGroup: string | null
   area: string | null
   assignedTo: string | null
+  assignedUserId: string | null
+  assignedUserName: string | null
+  assignedUserRole: string | null
   vendorName: string | null
   scheduledDate: string | null
   estimatedCost: number | null
@@ -186,7 +189,9 @@ export function maintenanceRequestFromApi(record: ApiMaintenanceSummary): Mainte
     maintenanceStatus: MAINTENANCE_STATUS_FROM_API[record.status] ?? "Submitted",
     approvalNote: undefined,
     needsMoreInfo: record.needsMoreInfo,
-    assignedTo: record.assignedTo ?? undefined,
+    assignedTo: record.assignedUserName ?? record.assignedTo ?? undefined,
+    assignedUserId: record.assignedUserId ?? undefined,
+    assignedUserRole: record.assignedUserRole?.toLowerCase() as MaintenanceRequest["assignedUserRole"],
     vendor: record.vendorName ?? undefined,
     vendorContact: undefined,
     scheduledDate: record.scheduledDate ?? undefined,
@@ -335,7 +340,7 @@ export interface UpdateMaintenanceInput {
   priority: MaintenancePriority
   classroomAgeGroup?: ClassroomAgeGroup
   area?: string
-  assignedTo?: string
+  assignedUserId?: string | null
   vendorName?: string
   vendorContact?: string
   scheduledDate?: string
@@ -350,7 +355,7 @@ export async function updateMaintenanceRequestApi(id: string, input: UpdateMaint
     description: input.description,
     category: MAINTENANCE_CATEGORY_TO_API[input.category],
     priority: MAINTENANCE_PRIORITY_TO_API[input.priority],
-    assignedTo: input.assignedTo,
+    assignedUserId: input.assignedUserId,
     vendorName: input.vendorName,
     vendorContact: input.vendorContact,
     scheduledDate: input.scheduledDate,

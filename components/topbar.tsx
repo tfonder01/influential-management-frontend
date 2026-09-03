@@ -1,6 +1,6 @@
 "use client"
 
-import { Upload, ChevronDown, Check, Menu } from "lucide-react"
+import { Upload, ChevronDown, Check, Menu, Package, Plus, Wrench } from "lucide-react"
 import { useState } from "react"
 import { useApp } from "@/lib/store"
 import { Button } from "@/components/ui/button"
@@ -21,6 +21,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { NotificationBell } from "@/components/notification-bell"
+import { NewMaintenanceRequestModal } from "@/components/new-maintenance-request-modal"
+import { NewSupplyRequestModal } from "@/components/new-supply-request-modal"
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -40,6 +42,8 @@ export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => 
   const { role, setRole, currentUser, isDemoMode } = useApp()
   const { logout } = useAuth()
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false)
+  const [supplyOpen, setSupplyOpen] = useState(false)
   const pathname = usePathname()
 
   const pageTitle =
@@ -117,11 +121,30 @@ export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => 
             </DropdownMenuContent>
           </DropdownMenu>}
 
-          {/* Upload Button */}
-          <Button size="sm" className="gap-1.5 text-xs" onClick={() => setUploadOpen(true)} aria-label="Upload record">
-            <Upload className="h-3.5 w-3.5" />
-            <span className="hidden md:inline">Upload Record</span>
-          </Button>
+          {/* Global create menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button size="sm" className="gap-1.5 px-2.5 text-xs sm:px-3" aria-label="Create" />}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Create</span>
+              <ChevronDown className="hidden h-3 w-3 opacity-70 sm:block" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => setUploadOpen(true)} className="gap-2 py-2">
+                <Upload className="h-4 w-4 text-muted-foreground" />
+                Upload Record
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMaintenanceOpen(true)} className="gap-2 py-2">
+                <Wrench className="h-4 w-4 text-muted-foreground" />
+                New Maintenance Request
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSupplyOpen(true)} className="gap-2 py-2">
+                <Package className="h-4 w-4 text-muted-foreground" />
+                New Supply Request
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Notifications */}
           <NotificationBell />
@@ -154,6 +177,8 @@ export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => 
         onClose={() => setUploadOpen(false)}
         defaultWorkspace={defaultUploadWorkspace}
       />
+      <NewMaintenanceRequestModal open={maintenanceOpen} onOpenChange={setMaintenanceOpen} />
+      <NewSupplyRequestModal open={supplyOpen} onOpenChange={setSupplyOpen} />
     </>
   )
 }

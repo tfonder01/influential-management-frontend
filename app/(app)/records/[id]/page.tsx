@@ -27,6 +27,14 @@ import { useApp } from "@/lib/store"
 import { StatusBadge } from "@/components/status-badge"
 import { CategoryBadge } from "@/components/category-badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { MentionCommentComposer, MentionText } from "@/components/comment-mentions"
 import { EditRecordModal } from "@/components/edit-record-modal"
 import { FilePreviewModal } from "@/components/file-preview-modal"
@@ -81,6 +89,8 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
   const [detailLoading, setDetailLoading] = useState(!isDemoMode)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [editOpen, setEditOpen] = useState(false)
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
+  const [archiveSubmitting, setArchiveSubmitting] = useState(false)
   const [previewFile, setPreviewFile] = useState<{ fileId: string; name: string } | null>(null)
   const [attachmentAction, setAttachmentAction] = useState<string | null>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
@@ -590,10 +600,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                     variant="outline"
                     size="sm"
                     className="w-full justify-start gap-2 text-muted-foreground"
-                    onClick={() => {
-                      archiveRecord(id)
-                      router.push("/archived")
-                    }}
+                    onClick={() => setArchiveDialogOpen(true)}
                   >
                     <Archive className="h-4 w-4" />
                     Archive Record
@@ -659,6 +666,30 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
       </div>
+
+      <Dialog open={archiveDialogOpen} onOpenChange={(open) => { if (!archiveSubmitting) setArchiveDialogOpen(open) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Archive this record?</DialogTitle>
+            <DialogDescription>This record will be removed from active views but its history will be preserved. An Owner can restore it later.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setArchiveDialogOpen(false)} disabled={archiveSubmitting}>Keep Active</Button>
+            <Button variant="destructive" disabled={archiveSubmitting} onClick={async () => {
+              setArchiveSubmitting(true)
+              const archived = await archiveRecord(id)
+              setArchiveSubmitting(false)
+              if (archived) {
+                setArchiveDialogOpen(false)
+                router.push(backHref)
+              }
+            }}>
+              {archiveSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Archive Record
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <EditRecordModal open={editOpen} onClose={() => setEditOpen(false)} record={record} />
       <FilePreviewModal

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { RecordStatus } from "@/lib/types"
 
-const STATUSES: RecordStatus[] = ["New", "Reviewed", "Needs Attention", "Archived"]
+const STATUSES: RecordStatus[] = ["New", "Reviewed", "Needs Attention"]
 
 type SortField = "title" | "location" | "recordType" | "uploadDate" | "status" | "lastUpdated"
 type SortDir = "asc" | "desc"
@@ -42,7 +42,7 @@ export default function OperationsPage() {
   }
 
   const operationsRecords = useMemo(() => {
-    let result = records.filter(isOperationsRecord)
+    let result = records.filter(isOperationsRecord).filter((record) => record.status !== "Archived")
     if (search) {
       const query = search.toLowerCase()
       result = result.filter((record) =>

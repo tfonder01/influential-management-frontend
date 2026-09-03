@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useEffect, useRef, useState } from "react"
+import { use, useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -11,7 +11,6 @@ import {
   CalendarDays,
   Camera,
   CheckCircle2,
-  Clock3,
   Download,
   ExternalLink,
   FileText,
@@ -34,8 +33,8 @@ import {
   XCircle,
 } from "lucide-react"
 import { useApp } from "@/lib/store"
-import { MAINTENANCE_VENDORS, MAINTENANCE_CATEGORIES } from "@/lib/mock-data"
-import type { Comment, MaintenanceAttachment, MaintenanceCategory, MaintenancePriority, MaintenanceStatus } from "@/lib/types"
+import { MAINTENANCE_VENDOR_PRESETS, MAINTENANCE_CATEGORIES, USERS } from "@/lib/mock-data"
+import type { Comment, MaintenanceAttachment, MaintenanceCategory, MaintenancePriority, MaintenanceStatus, Role } from "@/lib/types"
 import { priorityLabel } from "@/lib/priority-labels"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -62,6 +61,8 @@ import { cn } from "@/lib/utils"
 import { hasPotentialRepeatHistory } from "@/lib/maintenance-history"
 import { maintenanceDisplayId } from "@/lib/maintenance-display"
 import { roleLabel } from "@/lib/role-labels"
+import { listActivity, type ApiActivityItem } from "@/lib/activity-api"
+import { listAssignableUsers, type MentionableUser } from "@/lib/mentions-api"
 import {
   getMaintenanceDetail,
   isApiClientError,
@@ -73,6 +74,13 @@ import {
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
 const fieldClass = "h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
+const CUSTOM_VENDOR = "__custom_vendor__"
+const LEGACY_ASSIGNEE = "__legacy_assignee__"
+const ROLE_TO_API: Record<Role, MentionableUser["role"]> = {
+  owner: "OWNER",
+  director: "DIRECTOR",
+  assistant_director: "ASSISTANT_DIRECTOR",
+}
 const timelineIcons: Record<string, React.ElementType> = {
   created: Wrench,
   edited: Building2,
@@ -81,6 +89,17 @@ const timelineIcons: Record<string, React.ElementType> = {
   file_uploaded: Upload,
   archived: Archive,
   restored: RotateCcw,
+}
+
+function timelineIconFor(action: string): React.ElementType {
+  if (timelineIcons[action]) return timelineIcons[action]
+  if (action.includes("COMMENT")) return MessageSquareMore
+  if (action.includes("ATTACHMENT")) return Upload
+  if (action.includes("ARCHIVED")) return Archive
+  if (action.includes("RESTORED") || action.includes("REOPENED")) return RotateCcw
+  if (action.includes("STATUS") || action.includes("APPROVED") || action.includes("COMPLETED")) return CheckCircle2
+  if (action.includes("CREATED")) return Wrench
+  return Building2
 }
 const ATTACHMENT_TYPES: Record<"originalPhotos" | "completionPhotos" | "invoices", ApiMaintenanceAttachmentType> = {
   originalPhotos: "ISSUE_PHOTO",
@@ -141,6 +160,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
   const [replaceContext, setReplaceContext] = useState<{ attachment: MaintenanceAttachment; field: "originalPhotos" | "completionPhotos" | "invoices"; accept: string } | null>(null)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
+  const [archiveSubmitting, setArchiveSubmitting] = useState(false)
   const [removeAttachmentTarget, setRemoveAttachmentTarget] = useState<MaintenanceAttachment | null>(null)
   const replaceInputRef = useRef<HTMLInputElement>(null)
   const [approvalAction, setApprovalAction] = useState<string | null>(null)
@@ -150,7 +170,15 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
   const [savingDetails, setSavingDetails] = useState(false)
   const [commentSubmitting, setCommentSubmitting] = useState(false)
   const [vendor, setVendor] = useState("")
-  const [assignedTo, setAssignedTo] = useState("")
+  const [vendorSelection, setVendorSelection] = useState("")
+  const [assignedUserId, setAssignedUserId] = useState("")
+  const [assignableUsers, setAssignableUsers] = useState<MentionableUser[]>([])
+  const [assignableUsersLoading, setAssignableUsersLoading] = useState(false)
+  const [assignableUsersError, setAssignableUsersError] = useState("")
+  const [maintenanceActivity, setMaintenanceActivity] = useState<ApiActivityItem[]>([])
+  const [activityLoading, setActivityLoading] = useState(!isDemoMode)
+  const [activityError, setActivityError] = useState("")
+  const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null)
   const [vendorContact, setVendorContact] = useState("")
   const [scheduledDate, setScheduledDate] = useState("")
   const [estimatedCost, setEstimatedCost] = useState("")
@@ -167,13 +195,76 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
 
   useEffect(() => {
     if (!request) return
-    setVendor(request.vendor ?? "")
-    setAssignedTo(request.assignedTo ?? "")
+    const vendorName = request.vendor ?? ""
+    setVendor(vendorName)
+    setVendorSelection(vendorName
+      ? MAINTENANCE_VENDOR_PRESETS.some((preset) => preset.name === vendorName) ? vendorName : CUSTOM_VENDOR
+      : "")
+    const demoAssignee = isDemoMode ? USERS.find((user) => user.name === request.assignedTo) : undefined
+    setAssignedUserId(request.assignedUserId ?? demoAssignee?.id ?? (request.assignedTo ? LEGACY_ASSIGNEE : ""))
     setVendorContact(request.vendorContact ?? "")
     setScheduledDate(request.scheduledDate ?? "")
     setEstimatedCost(request.estimatedCost?.toString() ?? "")
     setFinalCost(request.finalCost?.toString() ?? "")
-  }, [request])
+  }, [isDemoMode, request])
+
+  useEffect(() => {
+    if (!request) return
+    if (isDemoMode) {
+      setAssignableUsers(USERS
+        .filter((user) => user.role === "owner" || user.locationId === request.locationId)
+        .map((user) => ({ id: user.id, displayName: user.name, role: ROLE_TO_API[user.role] })))
+      setAssignableUsersLoading(false)
+      setAssignableUsersError("")
+      return
+    }
+    let cancelled = false
+    setAssignableUsersLoading(true)
+    setAssignableUsersError("")
+    listAssignableUsers(request.locationId)
+      .then((users) => { if (!cancelled) setAssignableUsers(users) })
+      .catch(() => {
+        if (!cancelled) {
+          setAssignableUsers([])
+          setAssignableUsersError("Could not load users for this location.")
+        }
+      })
+      .finally(() => { if (!cancelled) setAssignableUsersLoading(false) })
+    return () => { cancelled = true }
+  }, [isDemoMode, request])
+
+  const refreshMaintenanceActivity = useCallback(async () => {
+    if (isDemoMode) return
+    setActivityLoading(true)
+    setActivityError("")
+    try {
+      const page = await listActivity({
+        module: "MAINTENANCE",
+        entityType: "MAINTENANCE_REQUEST",
+        entityId: id,
+        size: 100,
+      })
+      setMaintenanceActivity(page.content)
+    } catch {
+      setActivityError("Could not load activity right now.")
+    } finally {
+      setActivityLoading(false)
+    }
+  }, [id, isDemoMode])
+
+  const requestCommentVersion = comments
+    .filter((comment) => comment.recordId === id)
+    .map((comment) => comment.id)
+    .join(",")
+  const attachmentVersion = request
+    ? [...request.originalPhotos, ...request.completionPhotos, ...request.invoices]
+      .map((attachment) => `${attachment.fileId ?? attachment.name}:${attachment.displayName ?? ""}`)
+      .join(",")
+    : ""
+
+  useEffect(() => {
+    void refreshMaintenanceActivity()
+  }, [attachmentVersion, refreshMaintenanceActivity, request?.lastUpdated, requestCommentVersion])
 
   useEffect(() => {
     if (isDemoMode) return
@@ -211,7 +302,21 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
 
   const location = locations.find((item) => item.id === request.locationId)
   const requestComments = comments.filter((comment) => comment.recordId === id).sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-  const requestActivity = activity.filter((event) => event.recordId === id).sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+  const requestActivity = isDemoMode
+    ? activity.filter((event) => event.recordId === id)
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .map((event) => ({
+        id: event.id,
+        action: event.type,
+        message: event.detail,
+        actorDisplayName: event.user,
+        createdAt: event.timestamp,
+      }))
+    : maintenanceActivity
+  const showAllActivity = expandedActivityId === id
+  const visibleActivity = showAllActivity ? requestActivity : requestActivity.slice(0, 5)
+  const selectedAssignee = assignableUsers.find((user) => user.id === assignedUserId)
+  const persistedAssignedUserId = selectedAssignee?.id ?? null
   const canEdit = !request.archived
   const canManageAttachments = !isDemoMode && canEdit
   const canChangeProgress = canEdit
@@ -344,6 +449,23 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     setEditOpen(true)
   }
 
+  const changeVendorSelection = (selection: string) => {
+    setVendorSelection(selection)
+    if (!selection) {
+      setVendor("")
+      setVendorContact("")
+      return
+    }
+    if (selection === CUSTOM_VENDOR) {
+      if (MAINTENANCE_VENDOR_PRESETS.some((preset) => preset.name === vendor)) setVendor("")
+      setVendorContact("")
+      return
+    }
+    const preset = MAINTENANCE_VENDOR_PRESETS.find((item) => item.name === selection)
+    setVendor(selection)
+    setVendorContact(preset?.contact ?? "")
+  }
+
   const saveRequestDetails = async () => {
     if (editSaving) return
     if (!editTitle.trim() || !editCategory) {
@@ -373,7 +495,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
         priority: editPriority,
         classroomAgeGroup: request.classroomAgeGroup,
         area: editArea.trim() || undefined,
-        assignedTo: assignedTo || undefined,
+        assignedUserId: persistedAssignedUserId,
         vendorName: vendor || undefined,
         vendorContact: vendorContact || undefined,
         scheduledDate: scheduledDate || undefined,
@@ -393,7 +515,9 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     if (isDemoMode) {
       updateMaintenanceRequest(id, {
         vendor: vendor || undefined,
-        assignedTo: assignedTo || undefined,
+        assignedTo: selectedAssignee?.displayName,
+        assignedUserId: selectedAssignee?.id,
+        assignedUserRole: selectedAssignee?.role.toLowerCase() as Role | undefined,
         vendorContact: vendorContact || undefined,
         scheduledDate: scheduledDate || undefined,
         estimatedCost: estimatedCost ? Number(estimatedCost) : undefined,
@@ -410,7 +534,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
         priority: request.priority,
         classroomAgeGroup: request.classroomAgeGroup,
         area: request.area || undefined,
-        assignedTo: assignedTo || undefined,
+        assignedUserId: persistedAssignedUserId,
         vendorName: vendor || undefined,
         vendorContact: vendorContact || undefined,
         scheduledDate: scheduledDate || undefined,
@@ -659,7 +783,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
           <section className="order-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold text-foreground">Photos and invoices</h2><p className="mt-0.5 text-xs text-muted-foreground">{isDemoMode ? "Prototype attachments preserve filenames and upload history." : "Authorized uploads are attached directly to this maintenance request."}</p></div></div>
             {attachmentError && <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50/70 px-3 py-2.5 text-sm text-red-700">{attachmentError}</div>}
-            <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <div className="mt-4 grid gap-3">
               {[
                 { title: "Original photos", field: "originalPhotos" as const, items: request.originalPhotos, icon: Camera, accept: "image/*" },
                 { title: "Completion photos", field: "completionPhotos" as const, items: request.completionPhotos, icon: ImageIcon, accept: "image/*" },
@@ -673,24 +797,26 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
                       const label = item.displayName ?? item.name
                       const busy = item.fileId ? fileActionKey === `remove:${item.fileId}` || fileActionKey === `replace:${item.fileId}` : false
                       return (
-                        <div key={key} className="flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-1">
-                          <button type="button" onClick={() => handleAttachmentClick(item)} className="min-w-0 flex-1 truncate rounded px-1 py-1 text-left text-xs text-foreground transition-colors hover:text-primary" title={label}>{label}</button>
-                          <button type="button" onClick={() => void handleDownloadAttachment(item)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Download ${label}`} title="Download"><Download className="h-3.5 w-3.5" /></button>
-                          <button type="button" onClick={() => void handleOpenInNewTab(item)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Open ${label} in new tab`} title="Open in new tab"><ExternalLink className="h-3.5 w-3.5" /></button>
-                          {canManageAttachments && item.fileId && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={<button type="button" disabled={busy} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60" aria-label={`More actions for ${label}`} title="More actions" />}
-                              >
-                                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MoreHorizontal className="h-3.5 w-3.5" />}
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openRenameDialog(item)}><Pencil className="h-3.5 w-3.5" />Rename</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => triggerReplace(item, field, accept)}><RefreshCw className="h-3.5 w-3.5" />Replace</DropdownMenuItem>
-                                <DropdownMenuItem variant="destructive" onClick={() => requestRemoveAttachment(item)}><Trash2 className="h-3.5 w-3.5" />Remove</DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
+                        <div key={key} className="flex min-h-10 items-center gap-2 rounded-md border border-border bg-card px-2 py-1.5">
+                          <button type="button" onClick={() => handleAttachmentClick(item)} className="min-w-0 flex-1 truncate rounded px-1 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:text-primary" title={label}>{label}</button>
+                          <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                            <button type="button" onClick={() => void handleDownloadAttachment(item)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Download ${label}`} title="Download"><Download className="h-3.5 w-3.5" /></button>
+                            <button type="button" onClick={() => void handleOpenInNewTab(item)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Open ${label} in new tab`} title="Open in new tab"><ExternalLink className="h-3.5 w-3.5" /></button>
+                            {canManageAttachments && item.fileId && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger
+                                  render={<button type="button" disabled={busy} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60" aria-label={`More actions for ${label}`} title="More actions" />}
+                                >
+                                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MoreHorizontal className="h-3.5 w-3.5" />}
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => openRenameDialog(item)}><Pencil className="h-3.5 w-3.5" />Rename</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => triggerReplace(item, field, accept)}><RefreshCw className="h-3.5 w-3.5" />Replace</DropdownMenuItem>
+                                  <DropdownMenuItem variant="destructive" onClick={() => requestRemoveAttachment(item)}><Trash2 className="h-3.5 w-3.5" />Remove</DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </div>
                         </div>
                       )
                     })}
@@ -801,17 +927,53 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
           <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-semibold text-foreground">Vendor, assignment and cost</h2>
             <div className="mt-4 space-y-3">
-              <div className="space-y-1.5"><Label htmlFor="assigned-to">Assigned To</Label><Input id="assigned-to" value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} placeholder="Person or team" disabled={!canEdit || savingDetails} /></div>
-              <div className="space-y-1.5"><Label htmlFor="vendor">Vendor</Label><select id="vendor" className={fieldClass} value={vendor} onChange={(event) => setVendor(event.target.value)} disabled={!canEdit || savingDetails}><option value="">Not assigned</option>{MAINTENANCE_VENDORS.map((item) => <option key={item}>{item}</option>)}</select></div>
-              <div className="space-y-1.5"><Label htmlFor="vendor-contact">Vendor Contact <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id="vendor-contact" value={vendorContact} onChange={(event) => setVendorContact(event.target.value)} placeholder="Phone or email" disabled={!canEdit || savingDetails} /></div>
+              <div className="space-y-1.5">
+                <Label htmlFor="assigned-user">Assigned To <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                <select id="assigned-user" className={fieldClass} value={assignedUserId} onChange={(event) => setAssignedUserId(event.target.value)} disabled={!canEdit || savingDetails || assignableUsersLoading}>
+                  <option value="">{assignableUsersLoading ? "Loading users..." : "Not assigned"}</option>
+                  {assignedUserId === LEGACY_ASSIGNEE && request.assignedTo && <option value={LEGACY_ASSIGNEE} disabled>{request.assignedTo} (legacy assignment)</option>}
+                  {assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.displayName} &mdash; {roleLabel(user.role.toLowerCase() as Role)}</option>)}
+                </select>
+                {assignableUsersError && <p className="text-xs text-destructive">{assignableUsersError}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="vendor">Vendor</Label>
+                <select id="vendor" className={fieldClass} value={vendorSelection} onChange={(event) => changeVendorSelection(event.target.value)} disabled={!canEdit || savingDetails}>
+                  <option value="">Not assigned</option>
+                  {MAINTENANCE_VENDOR_PRESETS.map((preset) => <option key={preset.name} value={preset.name}>{preset.name}</option>)}
+                  <option value={CUSTOM_VENDOR}>Other / Custom Vendor</option>
+                </select>
+                <p className="text-[11px] text-muted-foreground">Temporary configured presets; vendor directory management is not yet available.</p>
+              </div>
+              {vendorSelection === CUSTOM_VENDOR && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="custom-vendor">Vendor Name</Label>
+                  <Input id="custom-vendor" value={vendor} onChange={(event) => setVendor(event.target.value)} placeholder="Enter vendor name" disabled={!canEdit || savingDetails} />
+                </div>
+              )}
+              {vendorSelection && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="vendor-contact">Vendor Contact <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                  <Input id="vendor-contact" value={vendorContact} onChange={(event) => setVendorContact(event.target.value)} placeholder="Phone or email" disabled={!canEdit || savingDetails} />
+                </div>
+              )}
               <div className="space-y-1.5"><Label htmlFor="scheduled-date">Scheduled Date</Label><Input id="scheduled-date" type="date" value={scheduledDate} onChange={(event) => setScheduledDate(event.target.value)} disabled={!canEdit || savingDetails} /></div>
-              <div className="grid grid-cols-2 gap-2"><div className="space-y-1.5"><Label htmlFor="estimated-cost">Estimated</Label><Input id="estimated-cost" type="number" min="0" step="0.01" value={estimatedCost} onChange={(event) => setEstimatedCost(event.target.value)} disabled={!canEdit || savingDetails} /></div><div className="space-y-1.5"><Label htmlFor="final-cost">Final</Label><Input id="final-cost" type="number" min="0" step="0.01" value={finalCost} onChange={(event) => setFinalCost(event.target.value)} disabled={!canEdit || savingDetails} /></div></div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="estimated-cost">Estimated Cost</Label>
+                  <div className="relative"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span><Input id="estimated-cost" className="pl-7 tabular-nums" type="number" inputMode="decimal" min="0" step="0.01" value={estimatedCost} onChange={(event) => setEstimatedCost(event.target.value)} disabled={!canEdit || savingDetails} /></div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="final-cost">Final Cost</Label>
+                  <div className="relative"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span><Input id="final-cost" className="pl-7 tabular-nums" type="number" inputMode="decimal" min="0" step="0.01" value={finalCost} onChange={(event) => setFinalCost(event.target.value)} disabled={!canEdit || savingDetails} /></div>
+                </div>
+              </div>
               {canEdit && <Button size="sm" className="w-full gap-2" onClick={() => void saveRepairDetails()} disabled={savingDetails}>{savingDetails && <Loader2 className="h-4 w-4 animate-spin" />}Save repair details</Button>}
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border pt-4">
+            <div className="mt-4 grid gap-2 border-t border-border pt-4 sm:grid-cols-3">
               <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] font-semibold uppercase text-muted-foreground">Estimated</p><p className="mt-1 text-sm font-semibold tabular-nums">{request.estimatedCost != null ? money.format(request.estimatedCost) : "—"}</p></div>
               <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] font-semibold uppercase text-muted-foreground">Final</p><p className="mt-1 text-sm font-semibold tabular-nums">{request.finalCost != null ? money.format(request.finalCost) : "—"}</p></div>
-              <div className="col-span-2 rounded-lg bg-muted/40 p-3"><p className="text-[10px] font-semibold uppercase text-muted-foreground">Completion Date</p><p className="mt-1 text-sm font-semibold">{request.completedAt ? new Date(request.completedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "Not completed yet"}</p></div>
+              <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] font-semibold uppercase text-muted-foreground">Completion Date</p><p className="mt-1 text-sm font-semibold">{request.completedAt ? new Date(request.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Not completed yet"}</p></div>
             </div>
           </section>
           </div>
@@ -819,7 +981,42 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
 
           <section className="order-7 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-semibold text-foreground">Activity timeline</h2>
-            <div className="mt-4 space-y-4">{requestActivity.map((event, index) => { const Icon = timelineIcons[event.type] ?? Clock3; return <div key={event.id} className="relative flex gap-3">{index < requestActivity.length - 1 && <span className="absolute left-3.5 top-7 h-full w-px bg-border" />}<span className="z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-card"><Icon className="h-3 w-3 text-muted-foreground" /></span><div className="pb-1"><p className="text-xs font-medium leading-snug text-foreground">{event.detail}</p><p className="mt-1 text-[10px] text-muted-foreground">{event.user} · {new Date(event.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p></div></div>})}{requestActivity.length === 0 && <p className="text-sm text-muted-foreground">No activity available.</p>}</div>
+            <div className="mt-4 space-y-4">
+              {activityError && (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2">
+                  <p className="text-xs text-muted-foreground">{activityError}</p>
+                  <Button variant="ghost" size="sm" onClick={() => void refreshMaintenanceActivity()}>Retry</Button>
+                </div>
+              )}
+              {activityLoading && requestActivity.length === 0 && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading activity...</div>
+              )}
+              {visibleActivity.map((event, index) => {
+                const Icon = timelineIconFor(event.action)
+                return (
+                  <div key={event.id} className="relative flex gap-3">
+                    {index < visibleActivity.length - 1 && <span className="absolute left-3.5 top-7 h-full w-px bg-border" />}
+                    <span className="z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-card"><Icon className="h-3 w-3 text-muted-foreground" /></span>
+                    <div className="min-w-0 pb-1">
+                      <p className="text-xs font-medium leading-snug text-foreground">{event.message}</p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">{event.actorDisplayName ?? "System"} &middot; {new Date(event.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
+                    </div>
+                  </div>
+                )
+              })}
+              {!activityLoading && !activityError && requestActivity.length === 0 && <p className="text-sm text-muted-foreground">No activity available.</p>}
+              {requestActivity.length > 5 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-full text-xs text-muted-foreground"
+                  onClick={() => setExpandedActivityId(showAllActivity ? null : id)}
+                  aria-expanded={showAllActivity}
+                >
+                  {showAllActivity ? "Show less" : "Show all activity"}
+                </Button>
+              )}
+            </div>
           </section>
 
           {role === "owner" && (
@@ -851,15 +1048,26 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
         </DialogContent>
       </Dialog>
 
-      <Dialog open={archiveDialogOpen} onOpenChange={(open) => setArchiveDialogOpen(open)}>
+      <Dialog open={archiveDialogOpen} onOpenChange={(open) => { if (!archiveSubmitting) setArchiveDialogOpen(open) }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Archive this maintenance request?</DialogTitle>
             <DialogDescription>This request will be removed from active views but its history will be preserved. An Owner can restore it later.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setArchiveDialogOpen(false)}>Keep Active</Button>
-            <Button variant="destructive" onClick={() => { setArchiveDialogOpen(false); archiveMaintenanceRequest(id); router.push("/archived") }}>Archive Request</Button>
+            <Button variant="outline" onClick={() => setArchiveDialogOpen(false)} disabled={archiveSubmitting}>Keep Active</Button>
+            <Button variant="destructive" disabled={archiveSubmitting} onClick={async () => {
+              setArchiveSubmitting(true)
+              const archived = await archiveMaintenanceRequest(id)
+              setArchiveSubmitting(false)
+              if (archived) {
+                setArchiveDialogOpen(false)
+                router.push("/maintenance")
+              }
+            }}>
+              {archiveSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Archive Request
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

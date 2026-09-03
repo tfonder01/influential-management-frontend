@@ -157,7 +157,7 @@ interface AppState {
   maintenanceRequests: MaintenanceRequest[]
   supplyRequests: SupplyRequest[]
   updateRecordStatus: (id: string, status: ComplianceRecord["status"]) => void
-  archiveRecord: (id: string) => void
+  archiveRecord: (id: string) => Promise<boolean>
   restoreRecord: (id: string) => void
   addRecord: (record: ComplianceRecord) => void
   addComment: (comment: Comment) => void
@@ -191,7 +191,7 @@ interface AppState {
   renameProductionMaintenanceAttachment: (id: string, fileId: string, displayName: string) => Promise<void>
   addMaintenanceComment: (comment: Comment) => Promise<void>
   updateMaintenanceRequest: (id: string, updates: Partial<MaintenanceRequest>, detail?: string) => void
-  archiveMaintenanceRequest: (id: string) => void
+  archiveMaintenanceRequest: (id: string) => Promise<boolean>
   restoreMaintenanceRequest: (id: string) => void
   addMaintenanceFile: (
     id: string,
@@ -200,7 +200,7 @@ interface AppState {
   ) => void
   addSupplyRequest: (request: SupplyRequest) => void
   updateSupplyRequest: (id: string, updates: Partial<SupplyRequest>, detail?: string) => void
-  archiveSupplyRequest: (id: string) => void
+  archiveSupplyRequest: (id: string) => Promise<boolean>
   restoreSupplyRequest: (id: string) => void
   addSupplyPhoto: (id: string, fileName: string) => void
   supplyRequestsLoading: boolean
@@ -487,12 +487,17 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
   )
 
   const archiveRecord = useCallback(
-    (id: string) => {
+    async (id: string) => {
       if (productionMode) {
-        archiveRecordApi(id)
-          .then((updated) => { upsertRecord(updated); showToast("Record archived") })
-          .catch((error) => showToast(productionErrorMessage(error, "Failed to archive record")))
-        return
+        try {
+          const updated = await archiveRecordApi(id)
+          upsertRecord(updated)
+          showToast("Record archived")
+          return true
+        } catch (error) {
+          showToast(productionErrorMessage(error, "Failed to archive record"))
+          return false
+        }
       }
       setRecords((prev) =>
         prev.map((r) =>
@@ -509,6 +514,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
         detail: "Record archived.",
       })
       showToast("Record archived")
+      return true
     },
     [productionMode, upsertRecord, currentUser, addActivityEvent, showToast]
   )
@@ -1191,15 +1197,17 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     [productionMode, currentUser, addActivityEvent, showToast]
   )
 
-  const archiveMaintenanceRequest = useCallback((id: string) => {
+  const archiveMaintenanceRequest = useCallback(async (id: string) => {
     if (productionMode) {
-      archiveMaintenanceRequestApi(id)
-        .then((updated) => {
-          upsertMaintenanceRequest(updated)
-          showToast("Maintenance request archived")
-        })
-        .catch((error) => showToast(productionErrorMessage(error, "Failed to archive maintenance request")))
-      return
+      try {
+        const updated = await archiveMaintenanceRequestApi(id)
+        upsertMaintenanceRequest(updated)
+        showToast("Maintenance request archived")
+        return true
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to archive maintenance request"))
+        return false
+      }
     }
     setMaintenanceRequests((prev) => prev.map((request) =>
       request.id === id ? { ...request, archived: true, lastUpdated: new Date().toISOString() } : request
@@ -1214,6 +1222,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       detail: "Maintenance request archived.",
     })
     showToast("Maintenance request archived")
+    return true
   }, [productionMode, upsertMaintenanceRequest, currentUser, addActivityEvent, showToast])
 
   const restoreMaintenanceRequest = useCallback((id: string) => {
@@ -1303,19 +1312,22 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     showToast(detail)
   }, [productionMode, currentUser, addActivityEvent, showToast])
 
-  const archiveSupplyRequest = useCallback((id: string) => {
+  const archiveSupplyRequest = useCallback(async (id: string) => {
     if (productionMode) {
-      archiveSupplyRequestApi(id)
-        .then((updated) => {
-          upsertSupplyRequest(updated)
-          showToast("Supply request archived")
-        })
-        .catch((error) => showToast(productionErrorMessage(error, "Failed to archive supply request")))
-      return
+      try {
+        const updated = await archiveSupplyRequestApi(id)
+        upsertSupplyRequest(updated)
+        showToast("Supply request archived")
+        return true
+      } catch (error) {
+        showToast(productionErrorMessage(error, "Failed to archive supply request"))
+        return false
+      }
     }
     setSupplyRequests((prev) => prev.map((request) => request.id === id ? { ...request, archived: true, lastUpdated: new Date().toISOString() } : request))
     addActivityEvent({ recordId: id, type: "archived", user: currentUser.name, userId: currentUser.id, role: currentUser.role, timestamp: new Date().toISOString(), detail: "Supply request archived." })
     showToast("Supply request archived")
+    return true
   }, [productionMode, upsertSupplyRequest, currentUser, addActivityEvent, showToast])
 
   const restoreSupplyRequest = useCallback((id: string) => {

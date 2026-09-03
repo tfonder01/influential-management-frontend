@@ -137,6 +137,7 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
   const [statusAction, setStatusAction] = useState<string | null>(null)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
+  const [archiveSubmitting, setArchiveSubmitting] = useState(false)
   const [removeAttachmentTarget, setRemoveAttachmentTarget] = useState<SupplyAttachment | null>(null)
   const [savingDetails, setSavingDetails] = useState(false)
   const [commentSubmitting, setCommentSubmitting] = useState(false)
@@ -816,15 +817,26 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
         </DialogContent>
       </Dialog>
 
-      <Dialog open={archiveDialogOpen} onOpenChange={(open) => setArchiveDialogOpen(open)}>
+      <Dialog open={archiveDialogOpen} onOpenChange={(open) => { if (!archiveSubmitting) setArchiveDialogOpen(open) }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Archive this supply request?</DialogTitle>
             <DialogDescription>This request will be removed from active views but its history will be preserved. An Owner can restore it later.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setArchiveDialogOpen(false)}>Keep Active</Button>
-            <Button variant="destructive" onClick={() => { setArchiveDialogOpen(false); archiveSupplyRequest(id); router.push("/archived") }}>Archive Request</Button>
+            <Button variant="outline" onClick={() => setArchiveDialogOpen(false)} disabled={archiveSubmitting}>Keep Active</Button>
+            <Button variant="destructive" disabled={archiveSubmitting} onClick={async () => {
+              setArchiveSubmitting(true)
+              const archived = await archiveSupplyRequest(id)
+              setArchiveSubmitting(false)
+              if (archived) {
+                setArchiveDialogOpen(false)
+                router.push("/supply-requests")
+              }
+            }}>
+              {archiveSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Archive Request
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

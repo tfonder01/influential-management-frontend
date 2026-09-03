@@ -19,7 +19,7 @@ import {
 import type { RecordStatus } from "@/lib/types"
 import { isComplianceRecord } from "@/lib/record-workspaces"
 
-const STATUSES: RecordStatus[] = ["New", "Reviewed", "Needs Attention", "Archived"]
+const STATUSES: RecordStatus[] = ["New", "Reviewed", "Needs Attention"]
 
 type SortField = "title" | "location" | "category" | "uploadDate" | "status" | "lastUpdated"
 type SortDir = "asc" | "desc"
@@ -55,7 +55,7 @@ function RecordsContent() {
   }
 
   const filtered = useMemo(() => {
-    let result = records.filter(isComplianceRecord)
+    let result = records.filter(isComplianceRecord).filter((record) => record.status !== "Archived")
     if (search) {
       const q = search.toLowerCase()
       result = result.filter(

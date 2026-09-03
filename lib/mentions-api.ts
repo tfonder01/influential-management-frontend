@@ -15,3 +15,8 @@ export function listMentionableUsers(locationId: string): Promise<MentionableUse
   const query = new URLSearchParams({ locationId })
   return apiClient.request<MentionableUser[]>(`/api/users/mentionable?${query}`)
 }
+
+export function listAssignableUsers(locationId: string): Promise<MentionableUser[]> {
+  const query = new URLSearchParams({ locationId })
+  return apiClient.request<MentionableUser[]>(`/api/users/assignable?${query}`)
+}
