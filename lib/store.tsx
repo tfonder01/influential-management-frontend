@@ -141,7 +141,16 @@ function mergeSupplySummaries(previous: SupplyRequest[], summaries: SupplyReques
   return summaries.map((summary) => {
     const detail = previousById.get(summary.id)
     if (!detail) return summary
-    return { ...summary, description: detail.description, approvalNote: detail.approvalNote, vendorContact: detail.vendorContact, photos: detail.photos }
+    return {
+      ...summary,
+      description: detail.description,
+      approvalNote: detail.approvalNote,
+      vendorContact: detail.vendorContact,
+      orderedAt: detail.orderedAt,
+      expectedDeliveryAt: detail.expectedDeliveryAt,
+      receivedAt: detail.receivedAt,
+      photos: detail.photos,
+    }
   })
 }
 

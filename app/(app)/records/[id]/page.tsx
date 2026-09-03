@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useEffect, useState } from "react"
+import { use, useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -43,6 +43,7 @@ import type { Comment } from "@/lib/types"
 import { getRecordWorkspace, isOperationsRecord } from "@/lib/record-workspaces"
 import { WorkspaceBadge } from "@/components/workspace-badge"
 import { reportingPeriodLabel } from "@/lib/reporting-period"
+import { listActivity, type ApiActivityItem } from "@/lib/activity-api"
 import {
   addRecordAttachmentApi,
   downloadFileApi,
@@ -61,6 +62,17 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   file_uploaded: FileText,
   archived: Archive,
   restored: RotateCcw,
+}
+
+function activityIconFor(action: string): React.ElementType {
+  if (ACTIVITY_ICONS[action]) return ACTIVITY_ICONS[action]
+  if (action.includes("COMMENT")) return Send
+  if (action.includes("ATTACHMENT")) return FileText
+  if (action.includes("ARCHIVED")) return Archive
+  if (action.includes("RESTORED")) return RotateCcw
+  if (action.includes("STATUS")) return CheckCircle2
+  if (action.includes("UPDATED")) return RefreshCw
+  return FileText
 }
 
 export default function RecordDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -94,6 +106,41 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
   const [previewFile, setPreviewFile] = useState<{ fileId: string; name: string } | null>(null)
   const [attachmentAction, setAttachmentAction] = useState<string | null>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [scopedRecordActivity, setScopedRecordActivity] = useState<ApiActivityItem[]>([])
+  const [activityLoading, setActivityLoading] = useState(!isDemoMode)
+  const [activityError, setActivityError] = useState("")
+  const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null)
+
+  const refreshRecordActivity = useCallback(async () => {
+    if (isDemoMode) return
+    setActivityLoading(true)
+    setActivityError("")
+    try {
+      const page = await listActivity({
+        module: "RECORDS",
+        entityType: "WORKSPACE_RECORD",
+        entityId: id,
+        size: 100,
+      })
+      setScopedRecordActivity(page.content)
+    } catch {
+      setActivityError("Could not load activity right now.")
+    } finally {
+      setActivityLoading(false)
+    }
+  }, [id, isDemoMode])
+
+  const recordCommentVersion = comments
+    .filter((comment) => comment.recordId === id)
+    .map((comment) => comment.id)
+    .join(",")
+  const attachmentVersion = record?.attachments
+    ?.map((attachment) => `${attachment.fileId ?? attachment.name}:${attachment.name}`)
+    .join(",") ?? ""
+
+  useEffect(() => {
+    void refreshRecordActivity()
+  }, [attachmentVersion, record?.lastUpdated, recordCommentVersion, refreshRecordActivity])
 
   useEffect(() => {
     if (isDemoMode) return
@@ -134,9 +181,19 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
 
   const location = locations.find((l) => l.id === record.locationId)
   const recordComments = comments.filter((c) => c.recordId === id)
-  const recordActivity = activity
-    .filter((a) => a.recordId === id)
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+  const recordActivity = isDemoMode
+    ? activity.filter((event) => event.recordId === id)
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .map((event) => ({
+        id: event.id,
+        action: event.type,
+        message: event.detail,
+        actorDisplayName: event.user,
+        createdAt: event.timestamp,
+      }))
+    : scopedRecordActivity
+  const showAllActivity = expandedActivityId === id
+  const visibleActivity = showAllActivity ? recordActivity : recordActivity.slice(0, 5)
 
   const handleComment = (mentionedUserIds: string[]) => {
     if (!commentText.trim()) return
@@ -367,32 +424,11 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
 
           {/* Attached Files */}
           <div className="min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
               <h2 className="text-sm font-semibold text-foreground">
                 Attached Documents <span className="font-normal text-muted-foreground">({displayedAttachments.length})</span>
               </h2>
-              {canManageAttachments && (
-                <label
-                  className={cn(
-                    "inline-flex min-h-9 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium text-primary transition-colors hover:bg-muted focus-within:ring-2 focus-within:ring-ring",
-                    attachmentAction && "pointer-events-none opacity-60"
-                  )}
-                >
-                  {attachmentAction === "add" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  Add Attachment
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-                    className="sr-only"
-                    disabled={attachmentAction !== null}
-                    onChange={(event) => {
-                      const file = event.currentTarget.files?.[0]
-                      event.currentTarget.value = ""
-                      if (file) void handleAddAttachment(file)
-                    }}
-                  />
-                </label>
-              )}
+              <p className="mt-0.5 text-xs text-muted-foreground">PDF, JPG, and PNG files attached to this record.</p>
             </div>
             {attachmentError && (
               <div role="alert" className="mt-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -404,41 +440,49 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
               {displayedAttachments.map((attachment, index) => (
                 <div
                   key={attachment.fileId ?? attachment.name + ":" + index}
-                  className="group flex min-w-0 flex-col items-stretch gap-3 rounded-lg border border-border bg-muted/25 px-3 py-3 transition-[background-color,border-color,box-shadow] duration-150 hover:border-primary/20 hover:bg-muted/50 hover:shadow-sm sm:flex-row sm:items-center sm:px-4"
+                  className="group flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 transition-colors hover:bg-muted/40"
                 >
-                  <div className="flex min-w-0 items-start gap-3 sm:flex-1 sm:items-center">
-                    <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 break-words text-sm text-foreground">{attachment.name}</span>
-                  </div>
-                  <div className="flex w-full shrink-0 flex-wrap gap-1 sm:w-auto sm:justify-end">
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <button
+                    type="button"
+                    onClick={() => handleView(attachment)}
+                    className="min-w-0 flex-1 truncate rounded px-1 py-1.5 text-left text-sm font-medium text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    title={attachment.name}
+                  >
+                    {attachment.name}
+                  </button>
+                  <div className="ml-auto flex shrink-0 items-center gap-0.5">
                     <button
                       type="button"
                       onClick={() => handleView(attachment)}
-                      className="flex min-h-10 flex-1 items-center justify-center gap-1 rounded-md px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 sm:flex-initial sm:px-2 sm:py-1"
+                      className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={`View ${attachment.name}`}
+                      title="View"
                     >
                       <Eye className="h-3.5 w-3.5" />
-                      View
                     </button>
                     <button
                       type="button"
                       onClick={() => void handleDownload(attachment)}
-                      className="flex min-h-10 flex-1 items-center justify-center gap-1 rounded-md px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 sm:flex-initial sm:px-2 sm:py-1"
+                      className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={`Download ${attachment.name}`}
+                      title="Download"
                     >
                       <Download className="h-3.5 w-3.5" />
-                      Download
                     </button>
                     {canManageAttachments && attachment.fileId && (
                       <>
                         <label
                           className={cn(
-                            "flex min-h-10 flex-1 cursor-pointer items-center justify-center gap-1 rounded-md px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-within:ring-2 focus-within:ring-ring sm:min-h-0 sm:flex-initial sm:px-2 sm:py-1",
+                            "cursor-pointer rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-within:outline-none focus-within:ring-2 focus-within:ring-ring",
                             attachmentAction && "pointer-events-none opacity-60"
                           )}
+                          title="Replace"
                         >
                           {attachmentAction === "replace:" + attachment.fileId
                             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             : <RefreshCw className="h-3.5 w-3.5" />}
-                          Replace
+                          <span className="sr-only">Replace {attachment.name}</span>
                           <input
                             type="file"
                             accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
@@ -455,12 +499,13 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                           type="button"
                           onClick={() => void handleRemoveAttachment(attachment)}
                           disabled={attachmentAction !== null}
-                          className="flex min-h-10 flex-1 items-center justify-center gap-1 rounded-md px-3 py-2 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 sm:min-h-0 sm:flex-initial sm:px-2 sm:py-1"
+                          className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                          aria-label={`Remove ${attachment.name}`}
+                          title="Remove"
                         >
                           {attachmentAction === "remove:" + attachment.fileId
                             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             : <Trash2 className="h-3.5 w-3.5" />}
-                          Remove
                         </button>
                       </>
                     )}
@@ -473,6 +518,28 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                 </p>
               )}
             </div>
+            {canManageAttachments && (
+              <label
+                className={cn(
+                  "mt-3 flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-border px-2 py-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/5 focus-within:ring-2 focus-within:ring-ring",
+                  attachmentAction && "pointer-events-none opacity-60"
+                )}
+              >
+                {attachmentAction === "add" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                Add Attachment
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                  className="sr-only"
+                  disabled={attachmentAction !== null}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0]
+                    event.currentTarget.value = ""
+                    if (file) void handleAddAttachment(file)
+                  }}
+                />
+              </label>
+            )}
           </div>
 
           {/* Comments */}
@@ -582,6 +649,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                     className="w-full justify-start gap-2 text-emerald-700 border-emerald-200 hover:bg-emerald-50"
                     onClick={() => updateRecordStatus(id, "Reviewed")}
                     disabled={record.status === "Reviewed"}
+                    aria-pressed={record.status === "Reviewed"}
                   >
                     <CheckCircle2 className="h-4 w-4" />
                     Mark Reviewed
@@ -592,6 +660,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                     className="w-full justify-start gap-2 text-amber-700 border-amber-200 hover:bg-amber-50"
                     onClick={() => updateRecordStatus(id, "Needs Attention")}
                     disabled={record.status === "Needs Attention"}
+                    aria-pressed={record.status === "Needs Attention"}
                   >
                     <AlertCircle className="h-4 w-4" />
                     Mark Needs Attention
@@ -634,33 +703,41 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
           <div className="min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-semibold text-foreground">Activity</h2>
             <div className="mt-4 space-y-4">
-              {recordActivity.map((evt, i) => {
-                const Icon = ACTIVITY_ICONS[evt.type] ?? FileText
+              {activityError && (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2">
+                  <p className="text-xs text-muted-foreground">{activityError}</p>
+                  <Button variant="ghost" size="sm" onClick={() => void refreshRecordActivity()}>Retry</Button>
+                </div>
+              )}
+              {activityLoading && recordActivity.length === 0 && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading activity...</div>
+              )}
+              {visibleActivity.map((event, index) => {
+                const Icon = activityIconFor(event.action)
                 return (
-                  <div key={evt.id} className="relative flex gap-3">
-                    {i < recordActivity.length - 1 && (
-                      <div className="absolute left-3.5 top-7 h-full w-px bg-border" />
-                    )}
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-card z-10">
-                      <Icon className="h-3 w-3 text-muted-foreground" />
-                    </div>
-                    <div className="min-w-0 flex-1 pb-1">
-                      <p className="break-words text-xs font-medium leading-snug text-foreground">{evt.detail}</p>
-                      <p className="mt-0.5 break-words text-[11px] text-muted-foreground">
-                        {evt.user} &middot;{" "}
-                        {new Date(evt.timestamp).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                  <div key={event.id} className="relative flex gap-3">
+                    {index < visibleActivity.length - 1 && <span className="absolute left-3.5 top-7 h-full w-px bg-border" />}
+                    <span className="z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-card"><Icon className="h-3 w-3 text-muted-foreground" /></span>
+                    <div className="min-w-0 pb-1">
+                      <p className="break-words text-xs font-medium leading-snug text-foreground">{event.message}</p>
+                      <p className="mt-1 break-words text-[10px] text-muted-foreground">
+                        {event.actorDisplayName ?? "System"} &middot; {new Date(event.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                       </p>
                     </div>
                   </div>
                 )
               })}
-              {recordActivity.length === 0 && (
-                <p className="text-xs text-muted-foreground">No activity yet.</p>
+              {!activityLoading && !activityError && recordActivity.length === 0 && <p className="text-sm text-muted-foreground">No activity available.</p>}
+              {recordActivity.length > 5 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-full text-xs text-muted-foreground"
+                  onClick={() => setExpandedActivityId(showAllActivity ? null : id)}
+                  aria-expanded={showAllActivity}
+                >
+                  {showAllActivity ? "Show less" : "Show all activity"}
+                </Button>
               )}
             </div>
           </div>

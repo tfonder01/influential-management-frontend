@@ -76,6 +76,20 @@ const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD
 const fieldClass = "h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
 const CUSTOM_VENDOR = "__custom_vendor__"
 const LEGACY_ASSIGNEE = "__legacy_assignee__"
+
+function normalizeText(value: string | null | undefined) {
+  return value?.trim() ?? ""
+}
+
+function normalizeDate(value: string | null | undefined) {
+  return value?.slice(0, 10) ?? ""
+}
+
+function normalizeCost(value: string | number | null | undefined) {
+  if (value === null || value === undefined || String(value).trim() === "") return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : String(value).trim()
+}
 const ROLE_TO_API: Record<Role, MentionableUser["role"]> = {
   owner: "OWNER",
   director: "DIRECTOR",
@@ -316,7 +330,16 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
   const showAllActivity = expandedActivityId === id
   const visibleActivity = showAllActivity ? requestActivity : requestActivity.slice(0, 5)
   const selectedAssignee = assignableUsers.find((user) => user.id === assignedUserId)
-  const persistedAssignedUserId = selectedAssignee?.id ?? null
+  const persistedAssignedUserId = assignedUserId && assignedUserId !== LEGACY_ASSIGNEE ? assignedUserId : null
+  const persistedAssignmentSelection = request.assignedUserId
+    ?? (isDemoMode ? USERS.find((user) => user.name === request.assignedTo)?.id : undefined)
+    ?? (request.assignedTo ? LEGACY_ASSIGNEE : "")
+  const repairDetailsDirty = assignedUserId !== persistedAssignmentSelection
+    || normalizeText(vendor) !== normalizeText(request.vendor)
+    || normalizeText(vendorContact) !== normalizeText(request.vendorContact)
+    || normalizeDate(scheduledDate) !== normalizeDate(request.scheduledDate)
+    || normalizeCost(estimatedCost) !== normalizeCost(request.estimatedCost)
+    || normalizeCost(finalCost) !== normalizeCost(request.finalCost)
   const canEdit = !request.archived
   const canManageAttachments = !isDemoMode && canEdit
   const canChangeProgress = canEdit
@@ -511,7 +534,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
   }
 
   const saveRepairDetails = async () => {
-    if (savingDetails) return
+    if (savingDetails || !repairDetailsDirty) return
     if (isDemoMode) {
       updateMaintenanceRequest(id, {
         vendor: vendor || undefined,
@@ -968,7 +991,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
                   <div className="relative"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span><Input id="final-cost" className="pl-7 tabular-nums" type="number" inputMode="decimal" min="0" step="0.01" value={finalCost} onChange={(event) => setFinalCost(event.target.value)} disabled={!canEdit || savingDetails} /></div>
                 </div>
               </div>
-              {canEdit && <Button size="sm" className="w-full gap-2" onClick={() => void saveRepairDetails()} disabled={savingDetails}>{savingDetails && <Loader2 className="h-4 w-4 animate-spin" />}Save repair details</Button>}
+              {canEdit && <Button size="sm" className="w-full gap-2" onClick={() => void saveRepairDetails()} disabled={savingDetails || !repairDetailsDirty}>{savingDetails && <Loader2 className="h-4 w-4 animate-spin" />}Save repair details</Button>}
             </div>
             <div className="mt-4 grid gap-2 border-t border-border pt-4 sm:grid-cols-3">
               <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] font-semibold uppercase text-muted-foreground">Estimated</p><p className="mt-1 text-sm font-semibold tabular-nums">{request.estimatedCost != null ? money.format(request.estimatedCost) : "—"}</p></div>

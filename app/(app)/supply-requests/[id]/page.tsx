@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useEffect, useRef, useState } from "react"
+import { use, useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -57,6 +57,7 @@ import { SupplyApprovalBadge, SupplyPriorityBadge, SupplyStatusBadge } from "@/c
 import { FilePreviewModal } from "@/components/file-preview-modal"
 import { cn } from "@/lib/utils"
 import { roleLabel } from "@/lib/role-labels"
+import { listActivity, type ApiActivityItem } from "@/lib/activity-api"
 import {
   ATTACHMENT_TYPE_TO_API,
   downloadFileApi,
@@ -69,6 +70,20 @@ import {
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
 const fieldClass = "h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
 const progressSteps = ["Submitted", "Approved / Ready", "Ordered", "Received"] as const
+
+function normalizeText(value: string | null | undefined) {
+  return value?.trim() ?? ""
+}
+
+function normalizeDate(value: string | null | undefined) {
+  return value?.slice(0, 10) ?? ""
+}
+
+function normalizeCost(value: string | number | null | undefined) {
+  if (value === null || value === undefined || String(value).trim() === "") return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : String(value).trim()
+}
 const timelineIcons: Record<string, React.ElementType> = {
   created: Package,
   edited: Building2,
@@ -77,6 +92,18 @@ const timelineIcons: Record<string, React.ElementType> = {
   file_uploaded: Upload,
   archived: Archive,
   restored: RotateCcw,
+}
+
+function timelineIconFor(action: string): React.ElementType {
+  if (timelineIcons[action]) return timelineIcons[action]
+  if (action.includes("COMMENT")) return MessageSquareMore
+  if (action.includes("ATTACHMENT")) return Upload
+  if (action.includes("ARCHIVED")) return Archive
+  if (action.includes("RESTORED") || action.includes("REOPENED")) return RotateCcw
+  if (action.includes("DECLINED") || action.includes("CANCELLED")) return XCircle
+  if (action.includes("STATUS") || action.includes("APPROVED") || action.includes("RECEIVED")) return CheckCircle2
+  if (action.includes("CREATED")) return Package
+  return Clock3
 }
 
 function Meta({ icon: Icon, label, children }: { icon: React.ElementType; label: string; children: React.ReactNode }) {
@@ -141,6 +168,10 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
   const [removeAttachmentTarget, setRemoveAttachmentTarget] = useState<SupplyAttachment | null>(null)
   const [savingDetails, setSavingDetails] = useState(false)
   const [commentSubmitting, setCommentSubmitting] = useState(false)
+  const [supplyActivity, setSupplyActivity] = useState<ApiActivityItem[]>([])
+  const [activityLoading, setActivityLoading] = useState(!isDemoMode)
+  const [activityError, setActivityError] = useState("")
+  const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null)
   const [vendor, setVendor] = useState("")
   const [vendorContact, setVendorContact] = useState("")
   const [orderDate, setOrderDate] = useState("")
@@ -167,6 +198,39 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
     setReceivedDate(request.receivedAt?.slice(0, 10) ?? "")
     setFinalCost(request.finalTotal?.toString() ?? "")
   }, [request])
+
+  const refreshSupplyActivity = useCallback(async () => {
+    if (isDemoMode) return
+    setActivityLoading(true)
+    setActivityError("")
+    try {
+      const page = await listActivity({
+        module: "SUPPLY",
+        entityType: "SUPPLY_REQUEST",
+        entityId: id,
+        size: 100,
+      })
+      setSupplyActivity(page.content)
+    } catch {
+      setActivityError("Could not load activity right now.")
+    } finally {
+      setActivityLoading(false)
+    }
+  }, [id, isDemoMode])
+
+  const requestCommentVersion = comments
+    .filter((comment) => comment.recordId === id)
+    .map((comment) => comment.id)
+    .join(",")
+  const attachmentVersion = request
+    ? request.photos
+      .map((attachment) => `${attachment.fileId ?? attachment.name}:${attachment.displayName ?? ""}`)
+      .join(",")
+    : ""
+
+  useEffect(() => {
+    void refreshSupplyActivity()
+  }, [attachmentVersion, refreshSupplyActivity, request?.lastUpdated, requestCommentVersion])
 
   useEffect(() => {
     if (isDemoMode) return
@@ -204,7 +268,19 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
 
   const location = locations.find((item) => item.id === request.locationId)
   const requestComments = comments.filter((comment) => comment.recordId === id).sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-  const requestActivity = activity.filter((event) => event.recordId === id).sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+  const requestActivity = isDemoMode
+    ? activity.filter((event) => event.recordId === id)
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .map((event) => ({
+        id: event.id,
+        action: event.type,
+        message: event.detail,
+        actorDisplayName: event.user,
+        createdAt: event.timestamp,
+      }))
+    : supplyActivity
+  const showAllActivity = expandedActivityId === id
+  const visibleActivity = showAllActivity ? requestActivity : requestActivity.slice(0, 5)
   const canEdit = !request.archived
   const canManageAttachments = !isDemoMode && canEdit
   const canChangeProgress = canEdit
@@ -232,6 +308,12 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
   const showsApprovalAsPrimaryState = request.approvalStatus === "Awaiting Approval"
     || request.approvalStatus === "Needs Information"
     || request.approvalStatus === "Declined"
+  const purchaseDetailsDirty = normalizeText(vendor) !== normalizeText(request.vendor)
+    || normalizeText(vendorContact) !== normalizeText(request.vendorContact)
+    || normalizeDate(orderDate) !== normalizeDate(request.orderedAt)
+    || normalizeDate(expectedDeliveryDate) !== normalizeDate(request.expectedDeliveryAt)
+    || normalizeDate(receivedDate) !== normalizeDate(request.receivedAt)
+    || normalizeCost(finalCost) !== normalizeCost(request.finalTotal)
 
   const updateStatus = async (status: Exclude<SupplyStatus, "Submitted">) => {
     if (statusAction || approvalAction) return
@@ -382,7 +464,7 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
   }
 
   const savePurchaseDetails = async () => {
-    if (savingDetails) return
+    if (savingDetails || !purchaseDetailsDirty) return
     if (isDemoMode) {
       updateSupplyRequest(id, {
         vendor: vendor || undefined,
@@ -391,7 +473,7 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
         expectedDeliveryAt: expectedDeliveryDate ? new Date(expectedDeliveryDate).toISOString() : undefined,
         receivedAt: receivedDate ? new Date(receivedDate).toISOString() : undefined,
         finalTotal: finalCost ? Number(finalCost) : undefined,
-      }, "Purchase and vendor details updated.")
+      }, "Purchase details updated.")
       return
     }
     setSavingDetails(true)
@@ -763,29 +845,64 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
           </section>
 
           <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
-            <h2 className="text-sm font-semibold text-foreground">Vendor and cost</h2>
+            <h2 className="text-sm font-semibold text-foreground">Purchase details</h2>
             <div className="mt-4 space-y-3">
-              <div className="space-y-1.5"><Label htmlFor="vendor">Vendor</Label><Input id="vendor" value={vendor} onChange={(event) => setVendor(event.target.value)} placeholder="Vendor or store name" disabled={!canEdit || savingDetails} /></div>
-              <div className="space-y-1.5"><Label htmlFor="vendor-contact">Vendor Contact <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id="vendor-contact" value={vendorContact} onChange={(event) => setVendorContact(event.target.value)} placeholder="Phone or email" disabled={!canEdit || savingDetails} /></div>
+              <div className="space-y-1.5"><Label htmlFor="vendor">Purchased From / Vendor</Label><Input id="vendor" value={vendor} onChange={(event) => setVendor(event.target.value)} placeholder="Store or vendor name" disabled={!canEdit || savingDetails} /></div>
+              <div className="space-y-1.5"><Label htmlFor="vendor-contact">Contact / Order Reference <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id="vendor-contact" value={vendorContact} onChange={(event) => setVendorContact(event.target.value)} placeholder="Phone, email, or order number" disabled={!canEdit || savingDetails} /></div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1.5"><Label htmlFor="order-date">Order Date</Label><Input id="order-date" type="date" value={orderDate} onChange={(event) => setOrderDate(event.target.value)} disabled={!canEdit || savingDetails} /></div>
                 <div className="space-y-1.5"><Label htmlFor="expected-delivery">Expected Delivery</Label><Input id="expected-delivery" type="date" value={expectedDeliveryDate} onChange={(event) => setExpectedDeliveryDate(event.target.value)} disabled={!canEdit || savingDetails} /></div>
               </div>
               <div className="space-y-1.5"><Label htmlFor="received-date">Received Date</Label><Input id="received-date" type="date" value={receivedDate} onChange={(event) => setReceivedDate(event.target.value)} disabled={!canEdit || savingDetails} /></div>
-              <div className="space-y-1.5"><Label htmlFor="final-cost">Final Cost</Label><Input id="final-cost" type="number" min="0" step="0.01" value={finalCost} onChange={(event) => setFinalCost(event.target.value)} disabled={!canEdit || savingDetails} /></div>
-              {canEdit && <Button size="sm" className="w-full gap-2" onClick={() => void savePurchaseDetails()} disabled={savingDetails}>{savingDetails && <Loader2 className="h-4 w-4 animate-spin" />}Save purchase details</Button>}
+              <div className="space-y-1.5"><Label htmlFor="final-cost">Final Cost</Label><div className="relative"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span><Input id="final-cost" className="pl-7 tabular-nums" type="number" inputMode="decimal" min="0" step="0.01" value={finalCost} onChange={(event) => setFinalCost(event.target.value)} disabled={!canEdit || savingDetails} /></div></div>
+              {canEdit && <Button size="sm" className="w-full gap-2" onClick={() => void savePurchaseDetails()} disabled={savingDetails || !purchaseDetailsDirty}>{savingDetails && <Loader2 className="h-4 w-4 animate-spin" />}Save purchase details</Button>}
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border pt-4">
+            <div className="mt-4 grid gap-2 border-t border-border pt-4 sm:grid-cols-3">
               <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] font-semibold uppercase text-muted-foreground">Estimated</p><p className="mt-1 text-sm font-semibold tabular-nums">{money.format(request.estimatedTotal)}</p></div>
               <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] font-semibold uppercase text-muted-foreground">Final</p><p className="mt-1 text-sm font-semibold tabular-nums">{request.finalTotal != null ? money.format(request.finalTotal) : "—"}</p></div>
-              <div className="col-span-2 rounded-lg bg-muted/40 p-3"><p className="text-[10px] font-semibold uppercase text-muted-foreground">Quantity</p><p className="mt-1 text-sm font-semibold">{request.quantity} {request.quantityUnit ?? ""}</p></div>
+              <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] font-semibold uppercase text-muted-foreground">Quantity</p><p className="mt-1 text-sm font-semibold">{request.quantity} {request.quantityUnit ?? ""}</p></div>
             </div>
           </section>
           </div>
 
           <section className="order-7 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-semibold text-foreground">Activity timeline</h2>
-            <div className="mt-4 space-y-4">{requestActivity.map((event, index) => { const Icon = timelineIcons[event.type] ?? Clock3; return <div key={event.id} className="relative flex gap-3">{index < requestActivity.length - 1 && <span className="absolute left-3.5 top-7 h-full w-px bg-border" />}<span className="z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-card"><Icon className="h-3 w-3 text-muted-foreground" /></span><div className="pb-1"><p className="text-xs font-medium leading-snug text-foreground">{event.detail}</p><p className="mt-1 text-[10px] text-muted-foreground">{event.user} · {new Date(event.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p></div></div>})}{requestActivity.length === 0 && <p className="text-sm text-muted-foreground">No activity available.</p>}</div>
+            <div className="mt-4 space-y-4">
+              {activityError && (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2">
+                  <p className="text-xs text-muted-foreground">{activityError}</p>
+                  <Button variant="ghost" size="sm" onClick={() => void refreshSupplyActivity()}>Retry</Button>
+                </div>
+              )}
+              {activityLoading && requestActivity.length === 0 && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading activity...</div>
+              )}
+              {visibleActivity.map((event, index) => {
+                const Icon = timelineIconFor(event.action)
+                return (
+                  <div key={event.id} className="relative flex gap-3">
+                    {index < visibleActivity.length - 1 && <span className="absolute left-3.5 top-7 h-full w-px bg-border" />}
+                    <span className="z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-card"><Icon className="h-3 w-3 text-muted-foreground" /></span>
+                    <div className="min-w-0 pb-1">
+                      <p className="text-xs font-medium leading-snug text-foreground">{event.message}</p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">{event.actorDisplayName ?? "System"} &middot; {new Date(event.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
+                    </div>
+                  </div>
+                )
+              })}
+              {!activityLoading && !activityError && requestActivity.length === 0 && <p className="text-sm text-muted-foreground">No activity available.</p>}
+              {requestActivity.length > 5 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-full text-xs text-muted-foreground"
+                  onClick={() => setExpandedActivityId(showAllActivity ? null : id)}
+                  aria-expanded={showAllActivity}
+                >
+                  {showAllActivity ? "Show less" : "Show all activity"}
+                </Button>
+              )}
+            </div>
           </section>
 
           {role === "owner" && (
