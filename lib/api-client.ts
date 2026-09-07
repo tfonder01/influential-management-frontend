@@ -130,6 +130,20 @@ export const apiClient = {
     return session
   },
 
+  async validateSetupToken(token: string) {
+    await authRequest("/api/auth/setup-account/validate", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    })
+  },
+
+  async setupAccount(token: string, password: string, confirmPassword: string) {
+    await authRequest("/api/auth/setup-account", {
+      method: "POST",
+      body: JSON.stringify({ token, password, confirmPassword }),
+    })
+  },
+
   restoreSession: refresh,
 
   async logout() {
