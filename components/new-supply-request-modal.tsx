@@ -153,8 +153,8 @@ export function NewSupplyRequestModal({ open, onOpenChange }: { open: boolean; o
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl p-0 sm:max-w-2xl">
-        <form onSubmit={(event) => void handleSubmit(event)}>
+      <DialogContent className="max-h-[calc(100dvh-1rem)] max-w-[calc(100%-1rem)] overflow-hidden p-0 sm:max-w-2xl">
+        <form className="grid max-h-[calc(100dvh-1rem)] min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]" onSubmit={(event) => void handleSubmit(event)}>
           <DialogHeader className="border-b border-border px-5 py-4 pr-12">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
@@ -167,7 +167,7 @@ export function NewSupplyRequestModal({ open, onOpenChange }: { open: boolean; o
             </div>
           </DialogHeader>
 
-          <div className="grid max-h-[68vh] gap-4 overflow-y-auto px-5 py-5 sm:grid-cols-2">
+          <div className="grid min-h-0 gap-4 overflow-y-auto px-4 py-4 sm:grid-cols-2 sm:px-5 sm:py-5">
             <div className="space-y-1.5">
               <Label htmlFor="supply-location">Location</Label>
               <div className="relative">

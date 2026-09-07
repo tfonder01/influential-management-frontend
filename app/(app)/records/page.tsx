@@ -109,19 +109,6 @@ function RecordsContent() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-xl border border-emerald-200/70 bg-emerald-50/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-foreground">Monthly classroom observation cadence</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">Approximately 11 observation uploads are expected each month across locations and age groups.</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setCategoryFilter("Classroom Observations")}
-          className="w-fit rounded-md border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
-        >
-          View observations
-        </button>
-      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">

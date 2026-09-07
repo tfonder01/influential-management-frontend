@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { CheckSquare2, ChevronDown, ChevronsUpDown, ChevronUp, FileText, Search } from "lucide-react"
+import { ChevronDown, ChevronsUpDown, ChevronUp, FileText, Search } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { CLASSROOM_AGE_GROUPS, OPERATIONS_RECORD_TYPES } from "@/lib/mock-data"
 import { isOperationsRecord } from "@/lib/record-workspaces"
@@ -85,20 +85,6 @@ export default function OperationsPage() {
 
   return (
     <div className="space-y-4">
-      <section className="flex flex-col gap-3 rounded-xl border border-blue-200/70 bg-blue-50/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
-            <CheckSquare2 className="h-4.5 w-4.5" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">Recurring operational records</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Opening, closing, playground, and location-specific operational documentation.</p>
-          </div>
-        </div>
-        <span className="w-fit rounded-full border border-blue-200 bg-white px-2.5 py-1 text-[11px] font-medium text-blue-700">
-          Shared review &amp; archive workflow
-        </span>
-      </section>
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[200px] flex-1 sm:max-w-xs">

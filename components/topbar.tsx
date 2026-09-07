@@ -23,38 +23,17 @@ import { useAuth } from "@/lib/auth"
 import { NotificationBell } from "@/components/notification-bell"
 import { NewMaintenanceRequestModal } from "@/components/new-maintenance-request-modal"
 import { NewSupplyRequestModal } from "@/components/new-supply-request-modal"
-
-const PAGE_TITLES: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/records": "Compliance",
-  "/operations": "Operations",
-  "/maintenance": "Maintenance",
-  "/supply-requests": "Supply Requests",
-  "/locations": "Locations",
-  "/needs-review": "Needs Review",
-  "/activity": "Activity",
-  "/archived": "Archived Records",
-  "/settings": "Settings",
-}
+import { resolveAppNavigation } from "@/lib/app-navigation"
 
 
 export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => void; menuOpen?: boolean }) {
-  const { role, setRole, currentUser, isDemoMode } = useApp()
+  const { role, setRole, currentUser, isDemoMode, records } = useApp()
   const { logout } = useAuth()
   const [uploadOpen, setUploadOpen] = useState(false)
   const [maintenanceOpen, setMaintenanceOpen] = useState(false)
   const [supplyOpen, setSupplyOpen] = useState(false)
   const pathname = usePathname()
-
-  const pageTitle =
-    Object.entries(PAGE_TITLES).find(([path]) => pathname === path || pathname.startsWith(path + "/"))?.[1] ??
-    "Influential Management"
-
-  const defaultUploadWorkspace = pathname.startsWith("/operations")
-    ? "operations"
-    : pathname.startsWith("/records")
-      ? "compliance"
-      : undefined
+  const navigation = resolveAppNavigation(pathname, records)
 
   return (
     <>
@@ -71,7 +50,7 @@ export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => 
               <Menu className="h-5 w-5" />
             </button>
           )}
-          <h1 className="truncate text-base font-semibold text-foreground">{pageTitle}</h1>
+          <h1 className="truncate text-base font-semibold text-foreground">{navigation.title}</h1>
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
@@ -152,7 +131,7 @@ export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => 
           {/* User Avatar */}
           <DropdownMenu>
             <DropdownMenuTrigger
-              render={<button className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground transition-[box-shadow,background-color] duration-150 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" aria-label="Open account menu" />}
+              render={<button className="flex h-10 w-10 items-center justify-center rounded-full bg-primary sm:h-8 sm:w-8 text-xs font-semibold text-primary-foreground transition-[box-shadow,background-color] duration-150 hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" aria-label="Open account menu" />}
             >
               {currentUser.initials}
             </DropdownMenuTrigger>
@@ -172,10 +151,10 @@ export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => 
       </header>
 
       <UploadModal
-        key={defaultUploadWorkspace ?? "global"}
+        key={navigation.uploadWorkspace ?? "global"}
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
-        defaultWorkspace={defaultUploadWorkspace}
+        defaultWorkspace={navigation.uploadWorkspace}
       />
       <NewMaintenanceRequestModal open={maintenanceOpen} onOpenChange={setMaintenanceOpen} />
       <NewSupplyRequestModal open={supplyOpen} onOpenChange={setSupplyOpen} />

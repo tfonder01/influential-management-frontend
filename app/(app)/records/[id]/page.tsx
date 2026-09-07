@@ -363,9 +363,9 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main content */}
-        <div className="min-w-0 space-y-6 lg:col-span-2">
+        <div className="contents lg:col-span-2 lg:block lg:space-y-6">
           {/* Header card */}
-          <div className="min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
+          <div className="order-1 min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <h1 className="break-words text-lg font-semibold leading-snug text-foreground">{record.title}</h1>
@@ -491,7 +491,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
           </div>
 
           {/* Attached Files */}
-          <div className="min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
+          <div className="order-3 min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <div>
               <h2 className="text-sm font-semibold text-foreground">
                 Attached Documents <span className="font-normal text-muted-foreground">({displayedAttachments.length})</span>
@@ -620,7 +620,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
           </div>
 
           {/* Comments */}
-          <div className="min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
+          <div className="order-4 min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-semibold text-foreground">
               Comments{" "}
               <span className="ml-1 text-muted-foreground font-normal">({recordComments.length})</span>
@@ -701,9 +701,9 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
         </div>
 
         {/* Sidebar: Actions + Activity */}
-        <div className="min-w-0 space-y-4">
+        <div className="contents lg:block lg:space-y-4">
           {/* Actions */}
-          <div className="min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
+          <div className="order-2 min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-semibold text-foreground">Actions</h2>
             <div className="mt-3 space-y-2">
               {!isArchived && (
@@ -777,7 +777,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
           </div>
 
           {/* Activity Timeline */}
-          <div className="min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
+          <div className="order-5 min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-semibold text-foreground">Activity</h2>
             <div className="mt-4 space-y-4">
               {activityError && (

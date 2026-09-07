@@ -59,21 +59,21 @@ export default function NeedsReviewPage() {
     <div className="space-y-5">
       {/* Summary */}
       <div className="flex flex-wrap gap-3 rounded-xl border border-border bg-card p-3 shadow-sm">
-        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 shadow-sm">
+        <div className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-amber-200 min-[430px]:w-auto bg-amber-50 px-4 py-2.5 shadow-sm">
           <AlertCircle className="h-4 w-4 text-amber-600" />
           <span className="text-sm font-medium text-amber-800">{attentionCount} Needs Attention</span>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 shadow-sm">
+        <div className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-blue-200 min-[430px]:w-auto bg-blue-50 px-4 py-2.5 shadow-sm">
           <span className="h-2 w-2 rounded-full bg-blue-500" />
           <span className="text-sm font-medium text-blue-800">{newCount} New Uploads</span>
         </div>
         {role === "owner" && (
-          <div className="flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-4 py-2.5 shadow-sm">
+          <div className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-orange-200 min-[430px]:w-auto bg-orange-50 px-4 py-2.5 shadow-sm">
             <Wrench className="h-4 w-4 text-orange-600" />
             <span className="text-sm font-medium text-orange-800">{dashboardSummary?.needsReview.maintenance ?? maintenanceQueue.length} Maintenance Actions</span>
           </div>
         )}
-        {role === "owner" && <div className="flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2.5 shadow-sm"><Package className="h-4 w-4 text-teal-700" /><span className="text-sm font-medium text-teal-800">{dashboardSummary?.needsReview.supply ?? supplyQueue.length} Supply Actions</span></div>}
+        {role === "owner" && <div className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-teal-200 min-[430px]:w-auto bg-teal-50 px-4 py-2.5 shadow-sm"><Package className="h-4 w-4 text-teal-700" /><span className="text-sm font-medium text-teal-800">{dashboardSummary?.needsReview.supply ?? supplyQueue.length} Supply Actions</span></div>}
       </div>
 
       {role === "owner" && supplyQueue.length > 0 && (
@@ -174,7 +174,73 @@ export default function NeedsReviewPage() {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <div className="divide-y divide-border md:hidden">
+              {queue.map((rec) => {
+                const location = (isDemoMode ? LOCATIONS : locations).find((item) => item.id === rec.locationId)
+                const ageSource = rec.createdAt ?? rec.uploadDate
+                const ageSourceMs = new Date(ageSource).getTime()
+                const daysAgo = Math.floor(((now ?? ageSourceMs) - ageSourceMs) / 86400000)
+                return (
+                  <article
+                    key={rec.id}
+                    className="p-4 transition-opacity duration-150 data-[resolving=true]:opacity-0"
+                    data-resolving={resolvingId === rec.id}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <Link href={`/records/${rec.id}`} className="block break-words text-sm font-semibold leading-snug text-foreground hover:text-primary hover:underline">
+                          {rec.title}
+                        </Link>
+                        <p className="mt-1 break-words text-xs text-muted-foreground">{rec.locationName ?? location?.name ?? "—"}</p>
+                      </div>
+                      <span className={`shrink-0 text-xs font-medium ${daysAgo >= 7 ? "text-red-600" : daysAgo >= 3 ? "text-amber-600" : "text-muted-foreground"}`}>
+                        {fmtAge(daysAgo)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      <StatusBadge status={rec.status} />
+                      <WorkspaceBadge workspace={getRecordWorkspace(rec)} />
+                      {rec.category !== "Operations" && <CategoryBadge category={rec.category} />}
+                    </div>
+                    {role === "owner" ? (
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                          onClick={() => markReviewed(rec.id)}
+                          disabled={resolvingId === rec.id}
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Reviewed
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 border-amber-200 text-amber-700 hover:bg-amber-50"
+                          onClick={() => updateRecordStatus(rec.id, "Needs Attention")}
+                          disabled={rec.status === "Needs Attention"}
+                        >
+                          <AlertCircle className="h-3.5 w-3.5" />
+                          Attention
+                        </Button>
+                        <Button render={<Link href={`/records/${rec.id}`} />} nativeButton={false} variant="outline" size="sm" className="col-span-2 gap-1.5">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Open record
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button render={<Link href={`/records/${rec.id}`} />} nativeButton={false} variant="outline" size="sm" className="mt-4 w-full gap-1.5">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Open record
+                      </Button>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-muted/40">
                 <tr>
@@ -288,7 +354,8 @@ export default function NeedsReviewPage() {
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>

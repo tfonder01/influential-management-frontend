@@ -242,7 +242,7 @@ export function NotificationBell() {
           <Button
             variant="ghost"
             size="icon"
-            className="relative h-8 w-8"
+            className="relative h-10 w-10 sm:h-8 sm:w-8"
             aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
           />
         }
@@ -279,7 +279,7 @@ export function NotificationBell() {
           </span>
         </div>
         <DropdownMenuSeparator className="m-0" />
-        <div className="max-h-[min(28rem,70vh)] overflow-y-auto p-1">
+        <div className="max-h-[min(28rem,calc(100dvh-5rem))] overflow-y-auto p-1">
           {loading ? (
             <div className="px-3 py-6 text-center text-sm text-muted-foreground">Loading notifications...</div>
           ) : notifications.length === 0 ? (
@@ -300,10 +300,10 @@ export function NotificationBell() {
                   aria-hidden="true"
                 />
                 <span className="min-w-0 flex-1">
-                  <span className={cn("block text-xs leading-tight", notification.read ? "font-medium text-foreground/70" : "font-semibold")}>
+                  <span className={cn("block break-words text-xs leading-tight", notification.read ? "font-medium text-foreground/70" : "font-semibold")}>
                     {notification.title}
                   </span>
-                  <span className="mt-1 block text-xs leading-snug text-muted-foreground">{notification.message}</span>
+                  <span className="mt-1 block break-words text-xs leading-snug text-muted-foreground">{notification.message}</span>
                   <span className="mt-1.5 block text-[10px] text-muted-foreground">
                     {notificationTimestamp(notification.createdAt)}
                   </span>
@@ -314,7 +314,7 @@ export function NotificationBell() {
                       type="button"
                       aria-label="Mark as read"
                       title="Mark as read"
-                      className="flex h-7 w-7 items-center justify-center rounded-md border border-blue-200/80 bg-background text-blue-600 shadow-sm transition-colors hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70"
+                      className="flex h-9 w-9 items-center justify-center rounded-md border border-blue-200/80 sm:h-7 sm:w-7 bg-background text-blue-600 shadow-sm transition-colors hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70"
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => {
                         event.preventDefault()
@@ -329,7 +329,7 @@ export function NotificationBell() {
                     type="button"
                     aria-label="Remove notification"
                     title="Remove notification"
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground sm:h-7 sm:w-7 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.preventDefault()

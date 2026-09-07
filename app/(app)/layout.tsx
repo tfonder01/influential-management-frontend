@@ -12,6 +12,7 @@ const SIDEBAR_COLLAPSE_STORAGE_KEY = "im.sidebar.collapsed"
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(false)
   // Start expanded on both server and first client render to avoid a hydration mismatch;
   // sync the real preference from localStorage after mount.
   const [collapsed, setCollapsed] = useState(false)
@@ -19,6 +20,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const stored = window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)
     if (stored === "true") setCollapsed(true)
+
+    const desktopQuery = window.matchMedia("(min-width: 1024px)")
+    const syncDesktop = () => setIsDesktop(desktopQuery.matches)
+    syncDesktop()
+    desktopQuery.addEventListener("change", syncDesktop)
+    return () => desktopQuery.removeEventListener("change", syncDesktop)
   }, [])
 
   const toggleCollapsed = () => {
@@ -49,13 +56,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <Sidebar onClose={() => setSidebarOpen(false)} collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
+        <Sidebar onClose={() => setSidebarOpen(false)} collapsed={isDesktop && collapsed} onToggleCollapsed={toggleCollapsed} />
       </div>
 
       <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
         <Topbar onMenuClick={() => setSidebarOpen((o) => !o)} menuOpen={sidebarOpen} />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          <div className="page-enter">{children}</div>
+        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6">
+          <div className="page-enter min-w-0">{children}</div>
         </main>
       </div>
     </div>
