@@ -16,6 +16,7 @@ import {
   ClipboardList,
   ChevronsLeft,
   ChevronsRight,
+  UserRoundCog,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/lib/store"
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { label: "Needs Review", href: "/needs-review", icon: AlertCircle },
   { label: "Activity", href: "/activity", icon: MessageSquare },
   { label: "Archived", href: "/archived", icon: Archive },
+  { label: "Users", href: "/admin/users", icon: UserRoundCog, ownerOnly: true },
   { label: "Settings", href: "/settings", icon: Settings },
 ]
 
@@ -77,7 +79,7 @@ export function Sidebar({
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-0.5">
-          {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+          {NAV_ITEMS.filter((item) => !item.ownerOnly || role === "owner").map(({ label, href, icon: Icon }) => {
             const isActive = navigation.activeHref === href
             const badge = label === "Needs Review" ? needsReviewCount : null
 

@@ -11,6 +11,7 @@ const PAGE_ROUTES = [
   { href: "/needs-review", title: "Needs Review" },
   { href: "/activity", title: "Activity" },
   { href: "/archived", title: "Archived Records" },
+  { href: "/admin/users", title: "Users" },
   { href: "/settings", title: "Settings" },
 ]
 

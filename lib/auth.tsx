@@ -10,6 +10,7 @@ interface AuthContextValue {
   isProductionMode: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  refreshSession: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -19,12 +20,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>(isProductionAuthMode ? "loading" : "authenticated")
   const [user, setUser] = useState<SessionUser | null>(null)
 
+  const refreshSession = useCallback(async () => {
+    const session = await apiClient.restoreSession()
+    setUser(session.user)
+    setStatus("authenticated")
+  }, [])
+
   useEffect(() => {
     if (!isProductionAuthMode) return
-    apiClient.restoreSession()
-      .then((session) => { setUser(session.user); setStatus("authenticated") })
-      .catch(() => { setUser(null); setStatus("anonymous") })
-  }, [])
+    refreshSession().catch(() => { setUser(null); setStatus("anonymous") })
+  }, [refreshSession])
 
   const login = useCallback(async (email: string, password: string) => {
     const session = await apiClient.login(email, password)
@@ -38,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus("anonymous")
   }, [])
 
-  const value = useMemo(() => ({ status, user, isProductionMode: isProductionAuthMode, login, logout }), [status, user, login, logout])
+  const value = useMemo(() => ({ status, user, isProductionMode: isProductionAuthMode, login, logout, refreshSession }), [status, user, login, logout, refreshSession])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

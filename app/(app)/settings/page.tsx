@@ -1,8 +1,10 @@
 "use client"
 
-import { Shield, MapPin, Users, Bell, Database } from "lucide-react"
+import Link from "next/link"
+import { Shield, MapPin } from "lucide-react"
 import { useApp } from "@/lib/store"
-import { COMPLIANCE_CATEGORIES, LOCATIONS, OPERATIONS_RECORD_TYPES, USERS } from "@/lib/mock-data"
+import { COMPLIANCE_CATEGORIES, LOCATIONS, OPERATIONS_RECORD_TYPES } from "@/lib/mock-data"
+import { Button } from "@/components/ui/button"
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -71,45 +73,13 @@ export default function SettingsPage() {
       {/* Team */}
       {role === "owner" && (
         <Section title="Team Members">
-          <div className="space-y-3">
-            {USERS.map((user) => (
-              <div
-                key={user.id}
-                className="flex items-center gap-3 rounded-lg border border-border bg-muted/15 p-3"
-              >
-                <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
-                    user.role === "owner"
-                      ? "bg-violet-100 text-violet-700"
-                      : "bg-teal-100 text-teal-700"
-                  }`}
-                >
-                  {user.initials}
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">{user.name}</p>
-                  <p className="text-xs capitalize text-muted-foreground">
-                    {user.role.replace("_", " ")}
-                    {user.locationId && (
-                      <> &middot; {LOCATIONS.find((l) => l.id === user.locationId)?.name}</>
-                    )}
-                  </p>
-                </div>
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
-                    user.role === "owner"
-                      ? "bg-violet-100 text-violet-700"
-                      : "bg-teal-100 text-teal-700"
-                  }`}
-                >
-                  {user.role.replace("_", " ")}
-                </span>
-              </div>
-            ))}
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/15 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Manage organization users</p>
+              <p className="mt-1 text-xs text-muted-foreground">Update roles, location access, and active status.</p>
+            </div>
+            <Button render={<Link href="/admin/users" />} nativeButton={false} variant="outline">Manage users</Button>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Full user management (invite, deactivate, role changes) will be available in a future release.
-          </p>
         </Section>
       )}
 
@@ -178,7 +148,7 @@ export default function SettingsPage() {
           <p className="text-sm font-semibold text-muted-foreground">Coming Soon</p>
         </div>
         <ul className="mt-3 grid gap-1.5 text-xs text-muted-foreground sm:grid-cols-2">
-          <li>• Full user management (invite, deactivate, role assignment)</li>
+          <li>• User invitations and account setup links</li>
           <li>• Email and push notification configuration</li>
           <li>• Audit log export (CSV, PDF)</li>
           <li>• Custom compliance category management</li>

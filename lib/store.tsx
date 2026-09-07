@@ -254,6 +254,10 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
   const productionMode = Boolean(productionUser)
   const productionRole = productionUser?.role.toLowerCase() as Role | undefined
   const [role, setRoleState] = useState<Role>(productionRole ?? "owner")
+
+  useEffect(() => {
+    if (productionRole) setRoleState(productionRole)
+  }, [productionRole])
   const [allRecords, setRecords] = useState<ComplianceRecord[]>(INITIAL_RECORDS)
   const [productionRecords, setProductionRecords] = useState<ComplianceRecord[]>([])
   const [productionMaintenanceRequests, setProductionMaintenanceRequests] = useState<MaintenanceRequest[]>([])
