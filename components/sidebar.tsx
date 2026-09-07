@@ -20,7 +20,6 @@ import {
 import { cn } from "@/lib/utils"
 import { useApp } from "@/lib/store"
 import { roleLabel } from "@/lib/role-labels"
-import { getNeedsReviewCounts } from "@/lib/needs-review"
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -45,9 +44,9 @@ export function Sidebar({
   onToggleCollapsed?: () => void
 }) {
   const pathname = usePathname()
-  const { records, role, currentUser, maintenanceRequests, supplyRequests } = useApp()
+  const { role, currentUser, dashboardSummary } = useApp()
 
-  const needsReviewCount = getNeedsReviewCounts(records, maintenanceRequests, supplyRequests, role).total
+  const needsReviewCount = dashboardSummary?.needsReview.total ?? 0
 
   return (
     <aside className={cn("flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar shadow-xl shadow-slate-950/10 transition-[width] duration-200", collapsed ? "w-[72px]" : "w-64")}>

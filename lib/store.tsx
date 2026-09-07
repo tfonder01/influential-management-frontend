@@ -14,6 +14,11 @@ import type {
 import { ToastViewport, type ToastMessage } from "@/components/toast-viewport"
 import type { SessionUser } from "./api-client"
 import {
+  buildDashboardSummary,
+  getDashboardSummaryApi,
+  type DashboardSummary,
+} from "./dashboard-api"
+import {
   RECORDS as INITIAL_RECORDS,
   COMMENTS as INITIAL_COMMENTS,
   ACTIVITY as INITIAL_ACTIVITY,
@@ -165,6 +170,10 @@ interface AppState {
   notifications: Notification[]
   maintenanceRequests: MaintenanceRequest[]
   supplyRequests: SupplyRequest[]
+  dashboardSummary: DashboardSummary | null
+  dashboardSummaryLoading: boolean
+  dashboardSummaryError: string | null
+  refreshDashboardSummary: () => Promise<void>
   updateRecordStatus: (id: string, status: ComplianceRecord["status"]) => void
   archiveRecord: (id: string) => Promise<boolean>
   restoreRecord: (id: string) => void
@@ -261,6 +270,9 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
   const [allMaintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>(INITIAL_MAINTENANCE_REQUESTS)
   const [allSupplyRequests, setSupplyRequests] = useState<SupplyRequest[]>(INITIAL_SUPPLY_REQUESTS)
   const [productionSupplyRequests, setProductionSupplyRequests] = useState<SupplyRequest[]>([])
+  const [productionDashboardSummary, setProductionDashboardSummary] = useState<DashboardSummary | null>(null)
+  const [dashboardSummaryLoading, setDashboardSummaryLoading] = useState(false)
+  const [dashboardSummaryError, setDashboardSummaryError] = useState<string | null>(null)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
 
   const currentUser = useMemo(() => productionUser
@@ -420,6 +432,29 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     : role === "owner"
       ? allSupplyRequests
       : allSupplyRequests.filter((request) => request.locationId === currentUser.locationId)
+
+  const demoDashboardSummary = useMemo(
+    () => productionMode ? null : buildDashboardSummary(records, maintenanceRequests, supplyRequests, role),
+    [productionMode, records, maintenanceRequests, supplyRequests, role]
+  )
+
+  const refreshDashboardSummary = useCallback(async () => {
+    if (!productionMode) return
+    setDashboardSummaryLoading(true)
+    setDashboardSummaryError(null)
+    try {
+      setProductionDashboardSummary(await getDashboardSummaryApi())
+    } catch (error) {
+      setDashboardSummaryError(productionErrorMessage(error, "Failed to load dashboard summary"))
+    } finally {
+      setDashboardSummaryLoading(false)
+    }
+  }, [productionMode])
+
+  useEffect(() => {
+    if (!productionMode) return
+    void refreshDashboardSummary()
+  }, [productionMode, productionRecords, productionMaintenanceRequests, productionSupplyRequests, refreshDashboardSummary])
 
   const visibleRecordIds = new Set(records.map((record) => record.id))
   const visibleMaintenanceIds = new Set(maintenanceRequests.map((request) => request.id))
@@ -1384,6 +1419,10 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
         notifications: visibleNotifications,
         maintenanceRequests,
         supplyRequests,
+        dashboardSummary: productionMode ? productionDashboardSummary : demoDashboardSummary,
+        dashboardSummaryLoading,
+        dashboardSummaryError,
+        refreshDashboardSummary,
         updateRecordStatus,
         archiveRecord,
         restoreRecord,

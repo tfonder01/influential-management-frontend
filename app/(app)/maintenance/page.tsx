@@ -55,6 +55,7 @@ export default function MaintenancePage() {
     refreshMaintenanceRequests,
     locations,
     isDemoMode,
+    dashboardSummary,
   } = useApp()
   const router = useRouter()
   const [modalOpen, setModalOpen] = useState(false)
@@ -67,10 +68,7 @@ export default function MaintenancePage() {
   const [statusFilter, setStatusFilter] = useState("all")
 
   const active = maintenanceRequests.filter((request) => !request.archived)
-  const completedMonth = active.reduce((latest, request) => request.completedAt && request.completedAt > latest ? request.completedAt : latest, "").slice(0, 7)
-  const completedThisMonth = active.filter((request) => request.maintenanceStatus === "Completed" && request.completedAt?.startsWith(completedMonth))
-  const totalCostThisMonth = completedThisMonth.reduce((sum, request) => sum + (request.finalCost ?? 0), 0)
-  const awaitingApprovalCount = active.filter((request) => request.approvalStatus === "Awaiting Approval").length
+  const summary = dashboardSummary?.maintenance
   const additionalFilterCount = Number(areaFilter !== "all") + Number(categoryFilter !== "all")
   const filtersActive = Boolean(search.trim())
     || locationFilter !== "all"
@@ -134,11 +132,11 @@ export default function MaintenancePage() {
       )}
 
       <div className="grid grid-cols-1 gap-3 min-[390px]:grid-cols-2 lg:grid-cols-5">
-        <SummaryCard label="Open Requests" value={active.filter((request) => !["Completed", "Cancelled"].includes(request.maintenanceStatus)).length} icon={Wrench} accent="bg-blue-50 text-blue-700" />
-        <SummaryCard label="Awaiting Approval" value={awaitingApprovalCount} icon={AlertCircle} accent={awaitingApprovalCount > 0 ? "bg-amber-50 text-amber-700" : "bg-slate-50 text-slate-500"} />
-        <SummaryCard label="In Progress" value={active.filter((request) => request.maintenanceStatus === "In Progress").length} icon={Clock3} accent="bg-indigo-50 text-indigo-700" />
-        <SummaryCard label="Completed This Month" value={completedThisMonth.length} icon={CheckCircle2} accent="bg-emerald-50 text-emerald-700" />
-        <div className="min-[390px]:col-span-2 lg:col-span-1"><SummaryCard label="Cost This Month" value={money.format(totalCostThisMonth)} icon={CircleDollarSign} accent="bg-violet-50 text-violet-700" /></div>
+        <SummaryCard label="Open Requests" value={summary?.open ?? "—"} icon={Wrench} accent="bg-blue-50 text-blue-700" />
+        <SummaryCard label="Awaiting Approval" value={summary?.awaitingApproval ?? "—"} icon={AlertCircle} accent={(summary?.awaitingApproval ?? 0) > 0 ? "bg-amber-50 text-amber-700" : "bg-slate-50 text-slate-500"} />
+        <SummaryCard label="In Progress" value={summary?.inProgress ?? "—"} icon={Clock3} accent="bg-indigo-50 text-indigo-700" />
+        <SummaryCard label="Completed This Month" value={summary?.completedThisMonth ?? "—"} icon={CheckCircle2} accent="bg-emerald-50 text-emerald-700" />
+        <div className="min-[390px]:col-span-2 lg:col-span-1"><SummaryCard label="Final Cost This Month" value={summary ? money.format(summary.costThisMonth) : "—"} icon={CircleDollarSign} accent="bg-violet-50 text-violet-700" /></div>
       </div>
 
       <div className="rounded-xl border border-border bg-card shadow-sm">

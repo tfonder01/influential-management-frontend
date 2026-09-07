@@ -12,7 +12,7 @@ import { getRecordWorkspace } from "@/lib/record-workspaces"
 import { WorkspaceBadge } from "@/components/workspace-badge"
 import { ApprovalStatusBadge, PriorityBadge } from "@/components/maintenance-badges"
 import { SupplyApprovalBadge, SupplyPriorityBadge } from "@/components/supply-badges"
-import { isMaintenanceActionable, isSupplyActionable } from "@/lib/needs-review"
+import { isMaintenanceActionable, isRecordActionable, isSupplyActionable } from "@/lib/needs-review"
 import { fmtAge } from "@/lib/format-date"
 import { maintenanceDisplayId } from "@/lib/maintenance-display"
 
@@ -25,6 +25,7 @@ export default function NeedsReviewPage() {
     supplyRequests,
     isDemoMode,
     locations,
+    dashboardSummary,
   } = useApp()
   const [now, setNow] = useState<number | null>(null)
   const [resolvingId, setResolvingId] = useState<string | null>(null)
@@ -40,15 +41,17 @@ export default function NeedsReviewPage() {
   }
 
   const queue = records
-    .filter((r) => r.status === "New" || r.status === "Needs Attention")
+    .filter(isRecordActionable)
     .sort((a, b) => {
       // Needs Attention first, then New; within each group, oldest first
       if (a.status === b.status) return a.uploadDate.localeCompare(b.uploadDate)
       return a.status === "Needs Attention" ? -1 : 1
     })
 
-  const attentionCount = queue.filter((r) => r.status === "Needs Attention").length
-  const newCount = queue.filter((r) => r.status === "New").length
+  const attentionCount = dashboardSummary?.records.needsAttention
+    ?? queue.filter((r) => r.status === "Needs Attention").length
+  const newCount = dashboardSummary?.records.newCount
+    ?? queue.filter((r) => r.status === "New").length
   const maintenanceQueue = role === "owner" ? maintenanceRequests.filter(isMaintenanceActionable) : []
   const supplyQueue = role === "owner" ? supplyRequests.filter(isSupplyActionable) : []
 
@@ -67,10 +70,10 @@ export default function NeedsReviewPage() {
         {role === "owner" && (
           <div className="flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-4 py-2.5 shadow-sm">
             <Wrench className="h-4 w-4 text-orange-600" />
-            <span className="text-sm font-medium text-orange-800">{maintenanceQueue.length} Maintenance Actions</span>
+            <span className="text-sm font-medium text-orange-800">{dashboardSummary?.needsReview.maintenance ?? maintenanceQueue.length} Maintenance Actions</span>
           </div>
         )}
-        {role === "owner" && <div className="flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2.5 shadow-sm"><Package className="h-4 w-4 text-teal-700" /><span className="text-sm font-medium text-teal-800">{supplyQueue.length} Supply Actions</span></div>}
+        {role === "owner" && <div className="flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2.5 shadow-sm"><Package className="h-4 w-4 text-teal-700" /><span className="text-sm font-medium text-teal-800">{dashboardSummary?.needsReview.supply ?? supplyQueue.length} Supply Actions</span></div>}
       </div>
 
       {role === "owner" && supplyQueue.length > 0 && (

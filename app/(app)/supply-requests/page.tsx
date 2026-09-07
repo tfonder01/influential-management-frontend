@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { AlertCircle, CheckCircle2, ChevronRight, CircleDollarSign, Loader2, Package, PackageCheck, Plus, Search, ShoppingCart, SlidersHorizontal } from "lucide-react"
+import { AlertCircle, ChevronRight, CircleDollarSign, Loader2, Package, PackageCheck, Plus, Search, ShoppingCart, SlidersHorizontal } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { SUPPLY_AREAS, SUPPLY_CATEGORIES } from "@/lib/mock-data"
 import type { SupplyApprovalStatus, SupplyStatus } from "@/lib/types"
@@ -22,7 +22,7 @@ function SummaryCard({ label, value, icon: Icon, accent }: { label: string; valu
 }
 
 export default function SupplyRequestsPage() {
-  const { supplyRequests, supplyRequestsLoading, supplyRequestsError, refreshSupplyRequests, locations, isDemoMode } = useApp()
+  const { supplyRequests, supplyRequestsLoading, supplyRequestsError, refreshSupplyRequests, locations, isDemoMode, dashboardSummary } = useApp()
   const router = useRouter()
   const [modalOpen, setModalOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -33,7 +33,7 @@ export default function SupplyRequestsPage() {
   const [areaFilter, setAreaFilter] = useState("all")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const active = supplyRequests.filter((request) => !request.archived)
-  const receivedMonth = active.reduce((latest, request) => request.receivedAt && request.receivedAt > latest ? request.receivedAt : latest, "").slice(0, 7)
+  const summary = dashboardSummary?.supply
   const additionalFilters = Number(areaFilter !== "all") + Number(categoryFilter !== "all")
   const filtersActive = Boolean(search.trim()) || [locationFilter, statusFilter, approvalFilter, areaFilter, categoryFilter].some((value) => value !== "all")
   const showInitialLoading = !isDemoMode && supplyRequestsLoading && supplyRequests.length === 0
@@ -66,12 +66,11 @@ export default function SupplyRequestsPage() {
     )}
 
     <div className="grid grid-cols-1 gap-3 min-[390px]:grid-cols-2 lg:grid-cols-6">
-      <SummaryCard label="Open Requests" value={active.filter((r) => !["Received", "Cancelled"].includes(r.fulfillmentStatus)).length} icon={Package} accent="bg-blue-50 text-blue-700" />
-      <SummaryCard label="Awaiting Approval" value={active.filter((r) => r.approvalStatus === "Awaiting Approval").length} icon={AlertCircle} accent="bg-amber-50 text-amber-700" />
-      <SummaryCard label="Approved" value={active.filter((r) => r.approvalStatus === "Approved").length} icon={CheckCircle2} accent="bg-emerald-50 text-emerald-700" />
-      <SummaryCard label="Ordered" value={active.filter((r) => r.fulfillmentStatus === "Ordered").length} icon={ShoppingCart} accent="bg-indigo-50 text-indigo-700" />
-      <SummaryCard label="Received This Month" value={active.filter((r) => r.receivedAt?.startsWith(receivedMonth)).length} icon={PackageCheck} accent="bg-teal-50 text-teal-700" />
-      <SummaryCard label="Estimated Spend" value={money.format(active.reduce((sum, r) => sum + r.estimatedTotal, 0))} icon={CircleDollarSign} accent="bg-violet-50 text-violet-700" />
+      <SummaryCard label="Open Requests" value={summary?.open ?? "—"} icon={Package} accent="bg-blue-50 text-blue-700" />
+      <SummaryCard label="Awaiting Approval" value={summary?.awaitingApproval ?? "—"} icon={AlertCircle} accent="bg-amber-50 text-amber-700" />
+      <SummaryCard label="Ordered / In Transit" value={summary?.orderedOrInTransit ?? "—"} icon={ShoppingCart} accent="bg-indigo-50 text-indigo-700" />
+      <SummaryCard label="Received This Month" value={summary?.receivedThisMonth ?? "—"} icon={PackageCheck} accent="bg-teal-50 text-teal-700" />
+      <div className="min-[390px]:col-span-2 lg:col-span-2"><SummaryCard label="Final Spend This Month" value={summary ? money.format(summary.spendThisMonth) : "—"} icon={CircleDollarSign} accent="bg-violet-50 text-violet-700" /></div>
     </div>
 
     <div className="rounded-xl border border-border bg-card shadow-sm">
