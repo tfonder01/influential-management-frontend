@@ -79,8 +79,25 @@ async function parseError(response: Response) {
   return new ApiClientError(body?.message ?? "Request failed", response.status, body?.code, body?.requestId)
 }
 
+/**
+ * Wraps the raw fetch() call so network-level failures (offline, DNS failure, connection
+ * refused, CORS block, etc.) are normalized into an ApiClientError at the exact point they
+ * occur, instead of letting the browser's native TypeError("Failed to fetch") escape the
+ * API boundary un-normalized. fetch() rejections are otherwise a distinct, uncontrolled
+ * error shape that can surface as an unhandled runtime exception (e.g. the Next.js dev
+ * overlay) even when a caller several async hops away already catches it — handling it
+ * here, at the source, ensures every consumer only ever deals with one typed error.
+ */
+async function safeFetch(input: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init)
+  } catch {
+    throw new ApiClientError("Unable to reach the server", 0, "NETWORK_ERROR")
+  }
+}
+
 async function authRequest(path: string, init: RequestInit = {}) {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await safeFetch(`${API_URL}${path}`, {
     ...init,
     credentials: "include",
     headers: { "Content-Type": "application/json", ...init.headers },
@@ -125,7 +142,7 @@ export const apiClient = {
     const headers = new Headers(init.headers)
     headers.set("Authorization", `Bearer ${accessToken}`)
     if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json")
-    const response = await fetch(`${API_URL}${path}`, { ...init, headers, credentials: "include" })
+    const response = await safeFetch(`${API_URL}${path}`, { ...init, headers, credentials: "include" })
     if (response.status === 401 && retry) {
       await refresh()
       return this.request<T>(path, init, false)
@@ -140,7 +157,7 @@ export const apiClient = {
     if (!accessToken) await refresh()
     const headers = new Headers(init.headers)
     headers.set("Authorization", `Bearer ${accessToken}`)
-    const response = await fetch(`${API_URL}${path}`, { ...init, headers, credentials: "include" })
+    const response = await safeFetch(`${API_URL}${path}`, { ...init, headers, credentials: "include" })
     if (response.status === 401 && retry) {
       await refresh()
       return this.requestBlob(path, init, false)
