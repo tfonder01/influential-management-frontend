@@ -101,6 +101,7 @@ export interface ApiRecordSummary {
 export interface ApiAttachment {
   fileId: string
   originalFilename: string
+  displayName: string | null
   contentType: string
   sizeBytes: number
   createdAt: string
@@ -176,6 +177,10 @@ export function recordFromApi(record: ApiRecordSummary): ComplianceRecord {
     uploadDate: record.recordDate,
     createdAt: record.createdAt,
     lastUpdated: record.updatedAt.slice(0, 10),
+    // Full-precision timestamp (unlike the date-only lastUpdated above) so callers that need to
+    // detect "this record just changed" - e.g. to refresh a scoped Activity timeline - can rely on
+    // it reliably changing after every edit/status-change, even multiple times on the same day.
+    updatedAt: record.updatedAt,
     description: "",
     fileNames: [],
     tags: [],
@@ -203,7 +208,7 @@ export function recordDetailFromApi(record: ApiRecordDetail): RecordDetailResult
       ...base,
       description: record.description ?? "",
       fileNames: record.attachments.map((a) => a.originalFilename),
-      attachments: record.attachments.map((a) => ({ fileId: a.fileId, name: a.originalFilename })),
+      attachments: record.attachments.map((a) => ({ fileId: a.fileId, name: a.originalFilename, displayName: a.displayName ?? undefined })),
     },
     fileNames: record.attachments.map((a) => a.originalFilename),
     attachments: record.attachments,
@@ -393,6 +398,14 @@ export async function replaceRecordAttachmentApi(recordId: string, oldFileId: st
   return apiClient.request<ApiAttachment>("/api/records/" + recordId + "/attachments/" + oldFileId, {
     method: "PUT",
     body: JSON.stringify({ fileId: newFileId }),
+  })
+}
+
+/** Renames only the user-facing display label. The original filename and storage key are unaffected. */
+export async function renameRecordAttachmentApi(recordId: string, fileId: string, displayName: string): Promise<ApiAttachment> {
+  return apiClient.request<ApiAttachment>("/api/records/" + recordId + "/attachments/" + fileId, {
+    method: "PATCH",
+    body: JSON.stringify({ displayName }),
   })
 }
 

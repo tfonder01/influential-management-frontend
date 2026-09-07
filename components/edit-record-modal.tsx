@@ -71,6 +71,36 @@ function formFromRecord(record: ComplianceRecord) {
 
 type EditForm = ReturnType<typeof formFromRecord>
 
+function normalizeDate(value: string | null | undefined) {
+  return value ? value.slice(0, 10) : ""
+}
+
+/**
+ * Canonical, comparable representation of the editable fields only (excludes the read-only
+ * referenceText/incidentText carried in EditForm). Used to detect whether the form actually
+ * differs from the persisted record, so Save Changes can stay disabled for no-op edits - matching
+ * the dirty-state convention already used for Maintenance/Supply "repair/purchase details" panels,
+ * and normalizing null-vs-empty-string / date / optional-field differences the same way.
+ */
+function editSnapshot(form: EditForm) {
+  return JSON.stringify({
+    workspace: form.workspace,
+    complianceCategory: form.complianceCategory || "",
+    operationsType: form.operationsType || "",
+    classroomAgeGroup: form.classroomAgeGroup || "",
+    area: form.area.trim(),
+    recordType: form.recordType.trim(),
+    cadence: form.cadence,
+    weekOf: normalizeDate(form.weekOf),
+    month: form.month || "",
+    year: form.year || "",
+    date: normalizeDate(form.date),
+    description: form.description.trim(),
+    useCustomTitle: form.useCustomTitle,
+    customTitle: form.customTitle.trim(),
+  })
+}
+
 function periodPayload(form: EditForm) {
   if (form.cadence === "WEEKLY") return { cadence: "WEEKLY" as const, weekOf: startOfWeek(form.weekOf) }
   if (form.cadence === "MONTHLY") return { cadence: "MONTHLY" as const, month: form.month, year: form.year }
@@ -80,12 +110,15 @@ function periodPayload(form: EditForm) {
 export function EditRecordModal({ open, onClose, record }: EditRecordModalProps) {
   const { editRecord, updateProductionRecord, isDemoMode } = useApp()
   const [form, setForm] = useState<EditForm>(() => formFromRecord(record))
+  const [baseline, setBaseline] = useState<EditForm>(() => formFromRecord(record))
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState("")
 
   useEffect(() => {
     if (open) {
-      setForm(formFromRecord(record))
+      const next = formFromRecord(record)
+      setForm(next)
+      setBaseline(next)
       setSubmitError("")
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,7 +126,11 @@ export function EditRecordModal({ open, onClose, record }: EditRecordModalProps)
 
   const generatedTitle = generateRecordTitle(form)
   const recordTitle = form.useCustomTitle ? form.customTitle.trim() : generatedTitle
-  const canSubmit = Boolean(recordTitle && !submitting)
+  // Save Changes stays disabled until the normalized form actually differs from the persisted
+  // baseline - disabled on open, re-enabled on a real edit, and disabled again if the user reverts
+  // a field back to its original value.
+  const isDirty = editSnapshot(form) !== editSnapshot(baseline)
+  const canSubmit = Boolean(recordTitle && !submitting && isDirty)
 
   const recordTypeOptions =
     form.workspace === "compliance" && form.complianceCategory ? RECORD_TYPE_OPTIONS[form.complianceCategory] : undefined
@@ -178,6 +215,7 @@ export function EditRecordModal({ open, onClose, record }: EditRecordModalProps)
         description: form.description,
         reportingPeriod: form.cadence !== "NONE" ? periodPayload(form) : undefined,
       })
+      setBaseline(form)
       onClose()
       return
     }
@@ -186,6 +224,7 @@ export function EditRecordModal({ open, onClose, record }: EditRecordModalProps)
     setSubmitError("")
     try {
       await updateProductionRecord(record.id, payload)
+      setBaseline(form)
       onClose()
     } catch (error) {
       setSubmitError(

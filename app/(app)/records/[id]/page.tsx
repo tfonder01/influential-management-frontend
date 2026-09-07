@@ -1,13 +1,13 @@
 "use client"
 
-import { use, useCallback, useEffect, useState } from "react"
+import { use, useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
   FileText,
   Download,
-  Eye,
+  ExternalLink,
   CheckCircle2,
   AlertCircle,
   Archive,
@@ -22,11 +22,14 @@ import {
   Pencil,
   Upload,
   Trash2,
+  MoreHorizontal,
 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { StatusBadge } from "@/components/status-badge"
 import { CategoryBadge } from "@/components/category-badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
@@ -35,6 +38,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { MentionCommentComposer, MentionText } from "@/components/comment-mentions"
 import { EditRecordModal } from "@/components/edit-record-modal"
 import { FilePreviewModal } from "@/components/file-preview-modal"
@@ -50,8 +59,10 @@ import {
   getRecordDetail,
   isApiClientError,
   removeRecordAttachmentApi,
+  renameRecordAttachmentApi,
   replaceRecordAttachmentApi,
   uploadFileApi,
+  viewFileApi,
 } from "@/lib/records-api"
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
@@ -106,6 +117,11 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
   const [previewFile, setPreviewFile] = useState<{ fileId: string; name: string } | null>(null)
   const [attachmentAction, setAttachmentAction] = useState<string | null>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [renameTarget, setRenameTarget] = useState<{ fileId: string; name: string; displayName?: string } | null>(null)
+  const [renameValue, setRenameValue] = useState("")
+  const [renameSubmitting, setRenameSubmitting] = useState(false)
+  const [removeAttachmentTarget, setRemoveAttachmentTarget] = useState<{ fileId: string; name: string; displayName?: string } | null>(null)
+  const replaceInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [scopedRecordActivity, setScopedRecordActivity] = useState<ApiActivityItem[]>([])
   const [activityLoading, setActivityLoading] = useState(!isDemoMode)
   const [activityError, setActivityError] = useState("")
@@ -134,13 +150,19 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
     .filter((comment) => comment.recordId === id)
     .map((comment) => comment.id)
     .join(",")
+  // Includes displayName so a rename (which only changes the label, not the fileId/name) is also
+  // detected as a change that should refresh Activity.
   const attachmentVersion = record?.attachments
-    ?.map((attachment) => `${attachment.fileId ?? attachment.name}:${attachment.name}`)
+    ?.map((attachment) => `${attachment.fileId ?? attachment.name}:${attachment.name}:${attachment.displayName ?? ""}`)
     .join(",") ?? ""
+  // Full-precision updatedAt (falling back to the date-only lastUpdated for older cached records)
+  // so every edit and status change - even repeated ones on the same day - is detected as a change
+  // that should refresh Activity, not just changes that happen to cross a calendar day boundary.
+  const recordVersion = record?.updatedAt ?? record?.lastUpdated ?? ""
 
   useEffect(() => {
     void refreshRecordActivity()
-  }, [attachmentVersion, record?.lastUpdated, recordCommentVersion, refreshRecordActivity])
+  }, [attachmentVersion, recordVersion, recordCommentVersion, refreshRecordActivity])
 
   useEffect(() => {
     if (isDemoMode) return
@@ -212,24 +234,39 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
     setCommentText("")
   }
 
-  const handleDownload = async (attachment: { fileId?: string; name: string }) => {
+  const attachmentLabel = (attachment: { name: string; displayName?: string }) => attachment.displayName ?? attachment.name
+
+  const handleAttachmentClick = (attachment: { fileId?: string; name: string; displayName?: string }) => {
+    if (!attachment.fileId) {
+      showToast("Preview is not available for this file.")
+      return
+    }
+    setPreviewFile({ fileId: attachment.fileId, name: attachmentLabel(attachment) })
+  }
+
+  const handleDownload = async (attachment: { fileId?: string; name: string; displayName?: string }) => {
     if (!attachment.fileId) {
       showToast("Download ready: " + attachment.name)
       return
     }
     try {
-      await downloadFileApi(attachment.fileId, attachment.name)
+      await downloadFileApi(attachment.fileId, attachmentLabel(attachment))
     } catch (error) {
       showToast(isApiClientError(error) ? error.message : "Download failed. Please try again.")
     }
   }
 
-  const handleView = (attachment: { fileId?: string; name: string }) => {
+  const handleOpenInNewTab = async (attachment: { fileId?: string; name: string }) => {
     if (!attachment.fileId) {
       showToast("Preview is not available for this file.")
       return
     }
-    setPreviewFile({ fileId: attachment.fileId, name: attachment.name })
+    try {
+      const { url } = await viewFileApi(attachment.fileId)
+      window.open(url, "_blank", "noopener")
+    } catch (error) {
+      showToast(isApiClientError(error) ? error.message : "Unable to open file. Please try again.")
+    }
   }
 
   const attachmentErrorMessage = (error: unknown, fallback: string) =>
@@ -260,10 +297,17 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
     })
   }
 
-  const handleRemoveAttachment = async (attachment: { fileId?: string; name: string }) => {
-    if (!attachment.fileId || !window.confirm("Remove " + attachment.name + " from this record?")) return
+  const requestRemoveAttachment = (attachment: { fileId?: string; name: string; displayName?: string }) => {
+    if (!attachment.fileId || attachmentAction) return
+    setRemoveAttachmentTarget({ fileId: attachment.fileId, name: attachment.name, displayName: attachment.displayName })
+  }
+
+  const confirmRemoveAttachment = async () => {
+    const attachment = removeAttachmentTarget
+    if (!attachment) return
+    setRemoveAttachmentTarget(null)
     await runAttachmentAction("remove:" + attachment.fileId, "Attachment removed", async () => {
-      await removeRecordAttachmentApi(id, attachment.fileId!)
+      await removeRecordAttachmentApi(id, attachment.fileId)
     })
   }
 
@@ -273,6 +317,30 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
       const uploaded = await uploadFileApi(file, record.locationId)
       await replaceRecordAttachmentApi(id, attachment.fileId!, uploaded.id)
     })
+  }
+
+  const openRenameDialog = (attachment: { fileId?: string; name: string; displayName?: string }) => {
+    if (!attachment.fileId) return
+    setRenameTarget({ fileId: attachment.fileId, name: attachment.name, displayName: attachment.displayName })
+    setRenameValue(attachment.displayName ?? attachment.name)
+  }
+
+  const submitRename = async () => {
+    if (!renameTarget || renameSubmitting) return
+    const trimmed = renameValue.trim()
+    if (!trimmed) return
+    setRenameSubmitting(true)
+    try {
+      await renameRecordAttachmentApi(id, renameTarget.fileId, trimmed)
+      const detail = await getRecordDetail(id)
+      upsertRecord(detail.record)
+      setRenameTarget(null)
+      showToast("Attachment renamed")
+    } catch (error) {
+      showToast(isApiClientError(error) ? error.message : "Rename failed. Please try again.")
+    } finally {
+      setRenameSubmitting(false)
+    }
   }
 
   const isArchived = record.status === "Archived"
@@ -437,81 +505,90 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
               </div>
             )}
             <div className="mt-3 space-y-2">
-              {displayedAttachments.map((attachment, index) => (
-                <div
-                  key={attachment.fileId ?? attachment.name + ":" + index}
-                  className="group flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 transition-colors hover:bg-muted/40"
-                >
-                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <button
-                    type="button"
-                    onClick={() => handleView(attachment)}
-                    className="min-w-0 flex-1 truncate rounded px-1 py-1.5 text-left text-sm font-medium text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    title={attachment.name}
+              {displayedAttachments.map((attachment, index) => {
+                const label = attachmentLabel(attachment)
+                const busy = attachment.fileId
+                  ? attachmentAction === "remove:" + attachment.fileId || attachmentAction === "replace:" + attachment.fileId
+                  : false
+                return (
+                  <div
+                    key={attachment.fileId ?? attachment.name + ":" + index}
+                    className="group flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 transition-colors hover:bg-muted/40"
                   >
-                    {attachment.name}
-                  </button>
-                  <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <button
                       type="button"
-                      onClick={() => handleView(attachment)}
-                      className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label={`View ${attachment.name}`}
-                      title="View"
+                      onClick={() => handleAttachmentClick(attachment)}
+                      className="min-w-0 flex-1 truncate rounded px-1 py-1.5 text-left text-sm font-medium text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      title={label}
                     >
-                      <Eye className="h-3.5 w-3.5" />
+                      {label}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDownload(attachment)}
-                      className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label={`Download ${attachment.name}`}
-                      title="Download"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                    </button>
-                    {canManageAttachments && attachment.fileId && (
-                      <>
-                        <label
-                          className={cn(
-                            "cursor-pointer rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-within:outline-none focus-within:ring-2 focus-within:ring-ring",
-                            attachmentAction && "pointer-events-none opacity-60"
-                          )}
-                          title="Replace"
-                        >
-                          {attachmentAction === "replace:" + attachment.fileId
-                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            : <RefreshCw className="h-3.5 w-3.5" />}
-                          <span className="sr-only">Replace {attachment.name}</span>
-                          <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-                            className="sr-only"
-                            disabled={attachmentAction !== null}
-                            onChange={(event) => {
-                              const file = event.currentTarget.files?.[0]
-                              event.currentTarget.value = ""
-                              if (file) void handleReplaceAttachment(attachment, file)
-                            }}
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => void handleRemoveAttachment(attachment)}
+                    <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => void handleDownload(attachment)}
+                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label={`Download ${label}`}
+                        title="Download"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleOpenInNewTab(attachment)}
+                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label={`Open ${label} in new tab`}
+                        title="Open in new tab"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </button>
+                      {canManageAttachments && attachment.fileId && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <button
+                                type="button"
+                                disabled={busy}
+                                className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                                aria-label={`More actions for ${label}`}
+                                title="More actions"
+                              />
+                            }
+                          >
+                            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MoreHorizontal className="h-3.5 w-3.5" />}
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openRenameDialog(attachment)}>
+                              <Pencil className="h-3.5 w-3.5" />Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => replaceInputRefs.current[attachment.fileId!]?.click()}>
+                              <RefreshCw className="h-3.5 w-3.5" />Replace
+                            </DropdownMenuItem>
+                            <DropdownMenuItem variant="destructive" onClick={() => requestRemoveAttachment(attachment)}>
+                              <Trash2 className="h-3.5 w-3.5" />Remove
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                      {canManageAttachments && attachment.fileId && (
+                        <input
+                          ref={(node) => { replaceInputRefs.current[attachment.fileId!] = node }}
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                          className="sr-only"
                           disabled={attachmentAction !== null}
-                          className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-                          aria-label={`Remove ${attachment.name}`}
-                          title="Remove"
-                        >
-                          {attachmentAction === "remove:" + attachment.fileId
-                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            : <Trash2 className="h-3.5 w-3.5" />}
-                        </button>
-                      </>
-                    )}
+                          onChange={(event) => {
+                            const file = event.currentTarget.files?.[0]
+                            event.currentTarget.value = ""
+                            if (file) void handleReplaceAttachment(attachment, file)
+                          }}
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
               {displayedAttachments.length === 0 && (
                 <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
                   No attachments.
@@ -763,6 +840,49 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
             }}>
               {archiveSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Archive Record
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(removeAttachmentTarget)} onOpenChange={(open) => { if (!open) setRemoveAttachmentTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove this attachment?</DialogTitle>
+            <DialogDescription>This will remove the attachment from this record. The stored file may be retained temporarily for recovery or cleanup.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveAttachmentTarget(null)} disabled={Boolean(attachmentAction)}>Keep Attachment</Button>
+            <Button variant="destructive" className="gap-2" onClick={() => void confirmRemoveAttachment()} disabled={Boolean(attachmentAction)}>
+              {attachmentAction?.startsWith("remove:") && <Loader2 className="h-4 w-4 animate-spin" />}
+              Remove Attachment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(renameTarget)} onOpenChange={(open) => { if (!open) setRenameTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename attachment</DialogTitle>
+            <DialogDescription>Only the display label changes. The original file and filename are preserved.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="record-attachment-display-name">Display name</Label>
+            <Input
+              id="record-attachment-display-name"
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              maxLength={255}
+              disabled={renameSubmitting}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)} disabled={renameSubmitting}>Cancel</Button>
+            <Button onClick={() => void submitRename()} disabled={!renameValue.trim() || renameSubmitting} className="gap-2">
+              {renameSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>
