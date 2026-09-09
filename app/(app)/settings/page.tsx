@@ -2,11 +2,13 @@
 
 import Link from "next/link"
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react"
-import { Building2, Loader2, MapPin, Pencil, RotateCcw, Shield } from "lucide-react"
+import { Building2, Loader2, MapPin, Pencil, Plus, RotateCcw, Shield } from "lucide-react"
 import { useApp } from "@/lib/store"
+import { useAuth } from "@/lib/auth"
 import { ApiClientError } from "@/lib/api-client"
 import { COMPLIANCE_CATEGORIES, LOCATIONS, OPERATIONS_RECORD_TYPES } from "@/lib/mock-data"
 import {
+  createLocationSettings,
   getOrganizationSettings,
   listLocationSettings,
   updateLocationSettings,
@@ -56,6 +58,7 @@ function errorMessage(error: unknown, fallback: string) {
 
 export default function SettingsPage() {
   const { role, currentUser, isDemoMode, showToast } = useApp()
+  const { refreshSession } = useAuth()
   const [organization, setOrganization] = useState<OrganizationSettings | null>(null)
   const [locations, setLocations] = useState<LocationSettings[]>([])
   const [loading, setLoading] = useState(role === "owner")
@@ -68,6 +71,11 @@ export default function SettingsPage() {
   const [locationEmail, setLocationEmail] = useState("")
   const [locationError, setLocationError] = useState("")
   const [locationSaving, setLocationSaving] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createName, setCreateName] = useState("")
+  const [createEmail, setCreateEmail] = useState("")
+  const [createError, setCreateError] = useState("")
+  const [createSaving, setCreateSaving] = useState(false)
 
   const load = useCallback(async () => {
     if (role !== "owner") {
@@ -105,6 +113,7 @@ export default function SettingsPage() {
       || normalizeEmail(locationEmail) !== (editTarget.notificationEmail ?? "").toLowerCase()),
   [editTarget, locationEmail, locationName])
   const locationValid = normalizeName(locationName).length > 0 && validEmail(locationEmail)
+  const createValid = normalizeName(createName).length > 0 && validEmail(createEmail)
 
   const saveOrganization = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -150,6 +159,52 @@ export default function SettingsPage() {
       setLocationError(errorMessage(error, "Location settings could not be updated."))
     } finally {
       setLocationSaving(false)
+    }
+  }
+
+  const openCreateLocation = () => {
+    setCreateName("")
+    setCreateEmail("")
+    setCreateError("")
+    setCreateOpen(true)
+  }
+
+  const closeCreateLocation = () => {
+    if (createSaving) return
+    setCreateOpen(false)
+    setCreateName("")
+    setCreateEmail("")
+    setCreateError("")
+  }
+
+  const saveCreatedLocation = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!createValid) return
+    setCreateSaving(true)
+    setCreateError("")
+    try {
+      const normalizedName = normalizeName(createName)
+      const normalizedEmail = normalizeEmail(createEmail)
+      const created = isDemoMode
+        ? { id: "demo-location-" + Date.now(), name: normalizedName, notificationEmail: normalizedEmail || undefined, updatedAt: new Date().toISOString() }
+        : await createLocationSettings(normalizedName, normalizedEmail)
+      setLocations((current) => [...current, created].sort((left, right) => left.name.localeCompare(right.name)))
+      setCreateName("")
+      setCreateEmail("")
+      setCreateOpen(false)
+      if (!isDemoMode) {
+        try {
+          await refreshSession()
+        } catch {
+          showToast("Location created. Refresh to use it in other workflows.")
+          return
+        }
+      }
+      showToast("Location created")
+    } catch (error) {
+      setCreateError(errorMessage(error, "Location could not be created."))
+    } finally {
+      setCreateSaving(false)
     }
   }
 
@@ -203,11 +258,14 @@ export default function SettingsPage() {
 
       {role === "owner" && !loading && !loadError && organization && (
         <Section title="Locations">
+          <div className="mb-4 flex justify-end">
+            <Button className="w-full sm:w-auto" onClick={openCreateLocation}><Plus /> Add location</Button>
+          </div>
           {locations.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-6 text-center">
               <Building2 className="mx-auto h-5 w-5 text-muted-foreground" />
               <p className="mt-2 text-sm font-medium">No active locations</p>
-              <p className="mt-1 text-xs text-muted-foreground">There are no existing locations to configure.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Create the first location to make it available across workflows.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -229,7 +287,6 @@ export default function SettingsPage() {
               ))}
             </div>
           )}
-          <p className="mt-3 text-xs text-muted-foreground">Location creation and deletion are managed outside this release.</p>
         </Section>
       )}
 
@@ -275,6 +332,31 @@ export default function SettingsPage() {
           <li>• Advanced notification preferences</li><li>• Audit log export (CSV, PDF)</li><li>• Custom compliance category management</li><li>• SSO / single sign-on integration</li>
         </ul>
       </div>
+
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) closeCreateLocation() }}>
+        <DialogContent className="sm:max-w-md">
+          <form className="contents" onSubmit={saveCreatedLocation} noValidate>
+            <DialogHeader><DialogTitle>Add location</DialogTitle><DialogDescription>Create an active location for this organization.</DialogDescription></DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="create-location-name">Location name</Label>
+                <Input id="create-location-name" autoFocus value={createName} maxLength={160} onChange={(event) => setCreateName(event.target.value)} onBlur={() => setCreateName(normalizeName(createName))} aria-invalid={normalizeName(createName).length === 0} />
+                {normalizeName(createName).length === 0 && <p className="text-xs text-destructive">Location name is required.</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-location-email">Notification email</Label>
+                <Input id="create-location-email" type="email" value={createEmail} maxLength={254} placeholder={organization?.notificationEmail || "operations@example.com"} onChange={(event) => setCreateEmail(event.target.value)} onBlur={() => setCreateEmail(normalizeEmail(createEmail))} aria-invalid={!validEmail(createEmail)} />
+                <p className={validEmail(createEmail) ? "text-xs text-muted-foreground" : "text-xs text-destructive"}>{validEmail(createEmail) ? "Uses organization notification email when blank." : "Enter a valid email address or leave blank."}</p>
+              </div>
+              {createError && <p className="text-sm text-destructive">{createError}</p>}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={createSaving} onClick={closeCreateLocation}>Cancel</Button>
+              <Button type="submit" disabled={!createValid || createSaving}>{createSaving && <Loader2 className="animate-spin" />} Create location</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open && !locationSaving) setEditTarget(null) }}>
         <DialogContent>

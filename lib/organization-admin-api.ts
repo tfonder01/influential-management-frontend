@@ -29,6 +29,13 @@ export function listLocationSettings() {
   return apiClient.request<LocationSettings[]>("/api/admin/settings/locations")
 }
 
+export function createLocationSettings(name: string, notificationEmail: string) {
+  return apiClient.request<LocationSettings>("/api/admin/settings/locations", {
+    method: "POST",
+    body: JSON.stringify({ name, notificationEmail }),
+  })
+}
+
 export function updateLocationSettings(id: string, name: string, notificationEmail: string) {
   return apiClient.request<LocationSettings>(`/api/admin/settings/locations/${id}`, {
     method: "PATCH",

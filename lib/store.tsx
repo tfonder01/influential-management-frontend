@@ -299,7 +299,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
         name: location.name,
         director: productionRole === "owner" ? "" : currentUser.name,
         directorId: productionRole === "owner" ? "" : currentUser.id,
-        address: [location.addressLine1, location.addressLine2, `${location.city}, ${location.state} ${location.postalCode}`].filter(Boolean).join(", "),
+        address: [location.addressLine1, location.addressLine2, [location.city, location.state, location.postalCode].filter(Boolean).join(" ")].filter(Boolean).join(", "),
         phone: location.phone ?? "",
         capacity: 0,
       }))

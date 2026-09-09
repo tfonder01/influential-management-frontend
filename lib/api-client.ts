@@ -1,3 +1,5 @@
+import { resolveApiUrl } from "./api-origin"
+
 export interface ApiLocation {
   id: string
   name: string
@@ -42,35 +44,14 @@ export class ApiClientError extends Error {
 }
 
 /**
- * Resolves the API origin the browser should call.
- *
- * The refresh-token cookie is HttpOnly + SameSite=Strict, which is scoped per-hostname
- * (browsers treat "localhost" and "127.0.0.1" as different sites even though both are
- * loopback). If the page is opened at a hostname that differs from the one baked into
- * NEXT_PUBLIC_API_URL, every API call becomes cross-site: login still appears to work
- * (the cookie is stored), but the cookie is then silently never sent back, so the very
- * next refresh/reload fails with 401 and the user is bounced to the login page even
- * though their session is still valid server-side.
- *
- * To make session persistence robust regardless of which loopback hostname a developer
- * or user happens to type, we keep the configured protocol/port but always target the
- * hostname the browser is actually using. This never runs in production cross-domain
- * deployments in a way that weakens security: it only ever substitutes the hostname to
- * match the page's own origin, which is exactly what "same-site" requires anyway.
+ * Preserve the configured API origin in deployed environments. The only hostname
+ * reconciliation allowed is localhost <-> 127.0.0.1 for local development, where the
+ * refresh cookie and browser page must use the same loopback hostname.
  */
-function resolveApiUrl(): string {
-  const configured = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
-  if (typeof window === "undefined") return configured
-  try {
-    const url = new URL(configured)
-    if (url.hostname !== window.location.hostname) url.hostname = window.location.hostname
-    return url.origin
-  } catch {
-    return configured
-  }
-}
-
-const API_URL = resolveApiUrl()
+const API_URL = resolveApiUrl(
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080",
+  typeof window === "undefined" ? undefined : window.location.hostname
+)
 let accessToken: string | null = null
 let refreshInFlight: Promise<AuthResponse> | null = null
 
