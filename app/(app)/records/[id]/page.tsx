@@ -849,7 +849,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Remove this attachment?</DialogTitle>
-            <DialogDescription>This will remove the attachment from this record. The stored file may be retained temporarily for recovery or cleanup.</DialogDescription>
+            <DialogDescription>This removes the attachment and its active stored file. Any version recovery requires an administrator.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRemoveAttachmentTarget(null)} disabled={Boolean(attachmentAction)}>Keep Attachment</Button>

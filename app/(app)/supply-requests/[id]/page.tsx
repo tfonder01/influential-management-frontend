@@ -962,7 +962,7 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Remove this attachment?</DialogTitle>
-            <DialogDescription>This will remove the attachment from this request. The stored file may be retained temporarily for recovery or cleanup.</DialogDescription>
+            <DialogDescription>This removes the attachment and its active stored file. Any version recovery requires an administrator.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRemoveAttachmentTarget(null)} disabled={Boolean(fileActionKey)}>Keep Attachment</Button>
