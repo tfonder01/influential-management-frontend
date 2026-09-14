@@ -1,8 +1,9 @@
 "use client"
 
+import Link from "next/link"
 import { FormEvent, useEffect, useId, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { CheckCircle2, Eye, EyeOff, Loader2 } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { ApiClientError } from "@/lib/api-client"
 import { Button } from "@/components/ui/button"
@@ -38,11 +39,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
+  const [resetComplete, setResetComplete] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const submittingRef = useRef(false)
   const errorId = useId()
 
   useEffect(() => {
+    setResetComplete(new URLSearchParams(window.location.search).get("reset") === "success")
     if (!isProductionMode || status === "authenticated") router.replace("/dashboard")
   }, [isProductionMode, status, router])
 
@@ -74,6 +77,12 @@ export default function LoginPage() {
         <p className="mb-6 text-center text-sm leading-relaxed text-muted-foreground">
           Secure access to your organization&rsquo;s operations and compliance workspace.
         </p>
+        {resetComplete && (
+          <p role="status" className="mb-5 flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            Your password has been reset. Sign in with your new password.
+          </p>
+        )}
         <form className="space-y-4" onSubmit={submit} noValidate>
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
@@ -122,6 +131,9 @@ export default function LoginPage() {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+          </div>
+          <div className="text-right">
+            <Link href="/forgot-password" className="text-sm font-medium text-primary hover:underline">Forgot password?</Link>
           </div>
           {error && (
             <p id={errorId} role="alert" aria-live="polite" className="text-sm text-destructive">

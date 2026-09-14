@@ -111,6 +111,28 @@ export const apiClient = {
     return session
   },
 
+  async requestPasswordReset(email: string) {
+    const response = await authRequest("/api/auth/password-reset/request", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    })
+    return response.json() as Promise<{ message: string }>
+  },
+
+  async validatePasswordResetToken(token: string) {
+    await authRequest("/api/auth/password-reset/validate", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    })
+  },
+
+  async resetPassword(token: string, password: string, confirmPassword: string) {
+    await authRequest("/api/auth/password-reset/complete", {
+      method: "POST",
+      body: JSON.stringify({ token, password, confirmPassword }),
+    })
+  },
+
   async validateSetupToken(token: string) {
     await authRequest("/api/auth/setup-account/validate", {
       method: "POST",
