@@ -6,6 +6,7 @@ import { Building2, Loader2, MapPin, Pencil, Plus, RotateCcw, Shield } from "luc
 import { useApp } from "@/lib/store"
 import { useAuth } from "@/lib/auth"
 import { ApiClientError } from "@/lib/api-client"
+import { updateOperationalEmailPreference } from "@/lib/user-preferences-api"
 import { COMPLIANCE_CATEGORIES, LOCATIONS, OPERATIONS_RECORD_TYPES } from "@/lib/mock-data"
 import {
   createLocationSettings,
@@ -58,7 +59,7 @@ function errorMessage(error: unknown, fallback: string) {
 
 export default function SettingsPage() {
   const { role, currentUser, isDemoMode, showToast } = useApp()
-  const { refreshSession } = useAuth()
+  const { user, refreshSession } = useAuth()
   const [organization, setOrganization] = useState<OrganizationSettings | null>(null)
   const [locations, setLocations] = useState<LocationSettings[]>([])
   const [loading, setLoading] = useState(role === "owner")
@@ -76,6 +77,21 @@ export default function SettingsPage() {
   const [createEmail, setCreateEmail] = useState("")
   const [createError, setCreateError] = useState("")
   const [createSaving, setCreateSaving] = useState(false)
+  const [operationalEmailEnabled, setOperationalEmailEnabled] = useState(
+    user?.operationalEmailNotificationsEnabled ?? true
+  )
+  const [savedOperationalEmailEnabled, setSavedOperationalEmailEnabled] = useState(
+    user?.operationalEmailNotificationsEnabled ?? true
+  )
+  const [preferenceSaving, setPreferenceSaving] = useState(false)
+  const [preferenceMessage, setPreferenceMessage] = useState("")
+  const [preferenceError, setPreferenceError] = useState("")
+
+  useEffect(() => {
+    if (!user) return
+    setOperationalEmailEnabled(user.operationalEmailNotificationsEnabled)
+    setSavedOperationalEmailEnabled(user.operationalEmailNotificationsEnabled)
+  }, [user])
 
   const load = useCallback(async () => {
     if (role !== "owner") {
@@ -208,6 +224,26 @@ export default function SettingsPage() {
     }
   }
 
+  const saveOperationalEmailPreference = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (operationalEmailEnabled === savedOperationalEmailEnabled || preferenceSaving) return
+    setPreferenceSaving(true)
+    setPreferenceError("")
+    setPreferenceMessage("")
+    try {
+      const updated = isDemoMode
+        ? { operationalEmailNotificationsEnabled: operationalEmailEnabled }
+        : await updateOperationalEmailPreference(operationalEmailEnabled)
+      setOperationalEmailEnabled(updated.operationalEmailNotificationsEnabled)
+      setSavedOperationalEmailEnabled(updated.operationalEmailNotificationsEnabled)
+      setPreferenceMessage("Email notification preference saved.")
+    } catch (error) {
+      setPreferenceError(errorMessage(error, "Email notification preference could not be saved."))
+    } finally {
+      setPreferenceSaving(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <Section title="Your Profile">
@@ -221,6 +257,40 @@ export default function SettingsPage() {
             {currentUser.locationId && <p className="text-xs text-muted-foreground">{LOCATIONS.find((location) => location.id === currentUser.locationId)?.name}</p>}
           </div>
         </div>
+      </Section>
+
+      <Section title="Email notifications">
+        <form className="space-y-4" onSubmit={saveOperationalEmailPreference}>
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-muted/15 p-4">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+              checked={operationalEmailEnabled}
+              disabled={preferenceSaving}
+              aria-describedby="operational-email-helper"
+              onChange={(event) => {
+                setOperationalEmailEnabled(event.target.checked)
+                setPreferenceMessage("")
+                setPreferenceError("")
+              }}
+            />
+            <span>
+              <span className="block text-sm font-medium text-foreground">Email me about operational activity</span>
+              <span id="operational-email-helper" className="mt-1 block text-xs text-muted-foreground">
+                Receive important Maintenance and Supply Request updates for locations you can access.
+              </span>
+            </span>
+          </label>
+          <div aria-live="polite">
+            {preferenceMessage && <p className="text-sm text-emerald-700">{preferenceMessage}</p>}
+            {preferenceError && <p className="text-sm text-destructive">{preferenceError}</p>}
+          </div>
+          <div className="flex justify-end">
+            <Button className="w-full sm:w-auto" type="submit" disabled={operationalEmailEnabled === savedOperationalEmailEnabled || preferenceSaving}>
+              {preferenceSaving && <Loader2 className="animate-spin" />} Save preference
+            </Button>
+          </div>
+        </form>
       </Section>
 
       {role === "owner" && loading && (

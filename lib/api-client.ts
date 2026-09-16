@@ -22,6 +22,7 @@ export interface SessionUser {
   firstName: string
   lastName: string
   role: ApiRole
+  operationalEmailNotificationsEnabled: boolean
   locations: ApiLocation[]
 }
 
