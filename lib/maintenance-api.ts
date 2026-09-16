@@ -433,6 +433,9 @@ export async function archiveMaintenanceRequestApi(id: string): Promise<Maintena
   return maintenanceAction(`/api/maintenance/${id}/archive`)
 }
 
+export async function permanentlyDeleteMaintenanceRequestApi(id: string): Promise<void> {
+  await apiClient.request<void>(`/api/maintenance/${id}/permanent`, { method: "DELETE" })
+}
 export async function restoreMaintenanceRequestApi(id: string): Promise<MaintenanceRequest> {
   return maintenanceAction(`/api/maintenance/${id}/restore`)
 }

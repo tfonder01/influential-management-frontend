@@ -1,7 +1,7 @@
 import { apiClient } from "./api-client"
 import { getNeedsReviewCounts } from "./needs-review"
 import { isComplianceRecord, isOperationsRecord } from "./record-workspaces"
-import type { ComplianceRecord, MaintenanceRequest, Role, SupplyRequest } from "./types"
+import type { ComplianceRecord, Location, MaintenanceRequest, Role, SupplyRequest } from "./types"
 
 export interface DashboardSummary {
   month: string
@@ -28,6 +28,18 @@ export interface DashboardSummary {
     receivedThisMonth: number
     spendThisMonth: number
   }
+  operationalRequests: Array<{
+    id: string
+    reference: string
+    requestType: "MAINTENANCE" | "SUPPLY"
+    title: string
+    locationId: string
+    locationName: string
+    approvalStatus: string
+    progressStatus: string
+    priority: string
+    createdAt: string
+  }>
   needsReview: {
     records: number
     maintenance: number
@@ -46,6 +58,7 @@ export function buildDashboardSummary(
   maintenanceRequests: MaintenanceRequest[],
   supplyRequests: SupplyRequest[],
   role: Role,
+  locations: Location[] = [],
   now = new Date()
 ): DashboardSummary {
   const month = now.toISOString().slice(0, 7)
@@ -58,6 +71,46 @@ export function buildDashboardSummary(
   const receivedThisMonth = activeSupply.filter((request) =>
     request.fulfillmentStatus === "Received" && request.receivedAt?.startsWith(month)
   )
+
+  const operationalRequests = [
+    ...activeMaintenance
+      .filter((request) => !["Completed", "Cancelled"].includes(request.maintenanceStatus))
+      .map((request) => ({
+        id: request.id,
+        reference: `MNT-${request.requestNumber ?? request.id}`,
+        requestType: "MAINTENANCE" as const,
+        title: request.title,
+        locationId: request.locationId,
+        locationName: locations.find((location) => location.id === request.locationId)?.name ?? "Unknown location",
+        approvalStatus: request.approvalStatus,
+        progressStatus: request.maintenanceStatus,
+        priority: request.priority,
+        createdAt: request.createdAt,
+        tier: ["Awaiting Approval", "Needs Information"].includes(request.approvalStatus) ? 0 : 1,
+      })),
+    ...activeSupply
+      .filter((request) => !["Received", "Cancelled"].includes(request.fulfillmentStatus))
+      .map((request) => ({
+        id: request.id,
+        reference: `SUP-${request.requestNumber ?? request.id}`,
+        requestType: "SUPPLY" as const,
+        title: request.title,
+        locationId: request.locationId,
+        locationName: locations.find((location) => location.id === request.locationId)?.name ?? "Unknown location",
+        approvalStatus: request.approvalStatus,
+        progressStatus: request.fulfillmentStatus,
+        priority: request.priority,
+        createdAt: request.requestedAt,
+        tier: ["Awaiting Approval", "Needs Information"].includes(request.approvalStatus) ? 0 : 1,
+      })),
+  ]
+    .sort((a, b) => a.tier - b.tier || b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 6)
+    .map((request) => {
+      const { tier, ...withoutTier } = request
+      void tier
+      return withoutTier
+    })
 
   return {
     month,
@@ -84,6 +137,7 @@ export function buildDashboardSummary(
       receivedThisMonth: receivedThisMonth.length,
       spendThisMonth: receivedThisMonth.reduce((sum, request) => sum + (request.finalTotal ?? 0), 0),
     },
+    operationalRequests,
     needsReview: getNeedsReviewCounts(activeRecords, activeMaintenance, activeSupply, role),
   }
 }

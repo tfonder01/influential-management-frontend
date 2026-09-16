@@ -48,6 +48,29 @@ function StatCard({
   )
 }
 
+function operationalLabel(value: string): string {
+  const labels: Record<string, string> = {
+    AWAITING_APPROVAL: "Awaiting Approval",
+    NEEDS_INFORMATION: "Needs Information",
+    NOT_REQUIRED: "Not Required",
+    APPROVED_READY: "Approved / Ready",
+    IN_PROGRESS: "In Progress",
+    WAITING: "Waiting / In Transit",
+  }
+  return labels[value] ?? value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function relativeCreatedAt(value: string, now: number | null): string {
+  if (now === null) return "—"
+  const elapsed = Math.max(0, now - new Date(value).getTime())
+  const minutes = Math.floor(elapsed / 60_000)
+  if (minutes < 1) return "Just now"
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} hr${hours === 1 ? "" : "s"} ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
 export default function DashboardPage() {
   const {
     records,
@@ -147,6 +170,63 @@ export default function DashboardPage() {
         />
       </div>
 
+      <section className="order-2 overflow-hidden rounded-xl border border-border bg-card shadow-sm" aria-labelledby="operational-requests-heading">
+        <div className="flex items-center justify-between border-b border-border px-4 py-4 sm:px-5">
+          <div>
+            <h2 id="operational-requests-heading" className="text-sm font-semibold text-foreground">Operational Requests</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Open Maintenance and Supply work, ordered by what needs attention first.</p>
+          </div>
+        </div>
+        {dashboardSummaryLoading && !dashboardSummary ? (
+          <div className="flex items-center justify-center gap-2 px-5 py-10 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            Loading open requests…
+          </div>
+        ) : dashboardSummaryError && !dashboardSummary ? (
+          <p className="px-5 py-10 text-center text-sm text-muted-foreground">Open requests could not be loaded.</p>
+        ) : (dashboardSummary?.operationalRequests.length ?? 0) === 0 ? (
+          <p className="px-5 py-10 text-center text-sm text-muted-foreground">No open Maintenance or Supply requests need attention.</p>
+        ) : (
+          <div className="divide-y divide-border">
+            {dashboardSummary?.operationalRequests.map((request) => {
+              const awaitingAction = ["AWAITING_APPROVAL", "NEEDS_INFORMATION", "Awaiting Approval", "Needs Information"].includes(request.approvalStatus)
+              const status = awaitingAction ? request.approvalStatus : request.progressStatus
+              const href = request.requestType === "MAINTENANCE" ? `/maintenance/${request.id}` : `/supply-requests/${request.id}`
+              const Icon = request.requestType === "MAINTENANCE" ? Wrench : Package
+              return (
+                <Link
+                  key={`${request.requestType}-${request.id}`}
+                  href={href}
+                  className="interactive-row group grid min-w-0 gap-3 px-4 py-3.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5"
+                >
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-xs font-semibold tabular-nums text-primary">{request.reference}</span>
+                        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{request.requestType === "MAINTENANCE" ? "Maintenance" : "Supply"}</span>
+                      </div>
+                      <p className="mt-0.5 truncate text-sm font-medium text-foreground">{request.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{request.locationName} <span aria-hidden="true">·</span> {relativeCreatedAt(request.createdAt, now)}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pl-11 sm:justify-end sm:pl-0">
+                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${awaitingAction ? "border-amber-200 bg-amber-50 text-amber-700" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
+                      {status === "WAITING" ? (request.requestType === "SUPPLY" ? "Waiting / In Transit" : "Waiting") : operationalLabel(status)}
+                    </span>
+                    <span className="inline-flex rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      {operationalLabel(request.priority)}
+                    </span>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        )}
+      </section>
       <div className="order-3 grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-6">
         {/* Recent Uploads */}
         <div className="contents">

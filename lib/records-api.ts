@@ -350,6 +350,9 @@ export async function archiveRecordApi(id: string): Promise<ComplianceRecord> {
   return recordFromApi(record)
 }
 
+export async function permanentlyDeleteRecordApi(id: string): Promise<void> {
+  await apiClient.request<void>(`/api/records/${id}/permanent`, { method: "DELETE" })
+}
 export async function restoreRecordApi(id: string): Promise<ComplianceRecord> {
   const record = await apiClient.request<ApiRecordDetail>(`/api/records/${id}/restore`, { method: "POST" })
   return recordFromApi(record)

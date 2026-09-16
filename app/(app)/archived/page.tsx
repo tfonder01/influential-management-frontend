@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Archive, RotateCcw, ExternalLink } from "lucide-react"
+import { Archive, RotateCcw, ExternalLink, Trash2 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { CategoryBadge } from "@/components/category-badge"
 import { Button } from "@/components/ui/button"
@@ -10,10 +10,21 @@ import { getRecordWorkspace } from "@/lib/record-workspaces"
 import { WorkspaceBadge } from "@/components/workspace-badge"
 import { MaintenanceStatusBadge } from "@/components/maintenance-badges"
 import { SupplyStatusBadge } from "@/components/supply-badges"
+import { PermanentDeleteDialog } from "@/components/permanent-delete-dialog"
+import { permanentlyDeleteRecordApi } from "@/lib/records-api"
+import { permanentlyDeleteMaintenanceRequestApi } from "@/lib/maintenance-api"
+import { permanentlyDeleteSupplyRequestApi } from "@/lib/supply-api"
+
+type PermanentDeleteTarget = {
+  kind: "record" | "maintenance" | "supply"
+  id: string
+  label: string
+}
 
 export default function ArchivedPage() {
-  const { records, activity, restoreRecord, role, maintenanceRequests, restoreMaintenanceRequest, supplyRequests, restoreSupplyRequest, locations: LOCATIONS } = useApp()
+  const { records, activity, restoreRecord, role, maintenanceRequests, restoreMaintenanceRequest, supplyRequests, restoreSupplyRequest, locations: LOCATIONS, refreshRecords, refreshMaintenanceRequests, refreshSupplyRequests, showToast, isDemoMode } = useApp()
   const [restoringId, setRestoringId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<PermanentDeleteTarget | null>(null)
 
   const handleRestore = (recordId: string) => {
     setRestoringId(recordId)
@@ -21,6 +32,23 @@ export default function ArchivedPage() {
       restoreRecord(recordId)
       setRestoringId(null)
     }, 160)
+  }
+
+  const handlePermanentDelete = async () => {
+    if (!deleteTarget) return
+    if (isDemoMode) throw new Error("Permanent deletion is available only with the production backend connected.")
+
+    if (deleteTarget.kind === "record") {
+      await permanentlyDeleteRecordApi(deleteTarget.id)
+      await refreshRecords()
+    } else if (deleteTarget.kind === "maintenance") {
+      await permanentlyDeleteMaintenanceRequestApi(deleteTarget.id)
+      await refreshMaintenanceRequests()
+    } else {
+      await permanentlyDeleteSupplyRequestApi(deleteTarget.id)
+      await refreshSupplyRequests()
+    }
+    showToast("Archived record permanently deleted")
   }
 
   const archived = records.filter((r) => r.status === "Archived")
@@ -37,8 +65,7 @@ export default function ArchivedPage() {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
-        <strong className="text-foreground">Archive</strong> — Records are never permanently deleted. Owners and admins can
-        restore archived records at any time.
+        <strong className="text-foreground">Archive</strong> — Archived records can be restored. Owners may also permanently delete a record using the confirmation workflow below.
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -136,6 +163,12 @@ export default function ArchivedPage() {
                               Restore
                             </Button>
                           )}
+                          {role === "owner" && (
+                            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-destructive hover:bg-destructive/10" onClick={() => setDeleteTarget({ kind: "record", id: rec.id, label: rec.title })}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Permanently delete
+                            </Button>
+                          )}
                           <Button
                             render={<Link href={`/records/${rec.id}`} />}
                             nativeButton={false}
@@ -180,8 +213,8 @@ export default function ArchivedPage() {
                     <p>{archiveEvent ? `Archived by ${archiveEvent.user}` : "Archived"}</p>
                     <p className="mt-0.5">{new Date(archiveEvent?.timestamp ?? request.lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
                   </div>
-                  <div className="flex items-center gap-2 sm:ml-2">
-                    {role === "owner" && <Button variant="ghost" size="sm" className="gap-1 text-primary" onClick={() => restoreMaintenanceRequest(request.id)}><RotateCcw className="h-3.5 w-3.5" />Restore</Button>}
+                  <div className="flex flex-wrap items-center gap-2 sm:ml-2">
+                    {role === "owner" && <><Button variant="ghost" size="sm" className="gap-1 text-primary" onClick={() => restoreMaintenanceRequest(request.id)}><RotateCcw className="h-3.5 w-3.5" />Restore</Button><Button variant="ghost" size="sm" className="gap-1 text-destructive hover:bg-destructive/10" onClick={() => setDeleteTarget({ kind: "maintenance", id: request.id, label: `MNT-${request.requestNumber ?? request.id} · ${request.title}` })}><Trash2 className="h-3.5 w-3.5" />Permanently delete</Button></>}
                     <Button render={<Link href={`/maintenance/${request.id}`} />} nativeButton={false} variant="ghost" size="icon" aria-label={`Open ${request.title}`}><ExternalLink className="h-3.5 w-3.5" /></Button>
                   </div>
                 </div>
@@ -191,7 +224,13 @@ export default function ArchivedPage() {
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"><div className="border-b border-border px-5 py-4"><h2 className="text-sm font-semibold">Archived Supply Requests ({archivedSupply.length})</h2><p className="mt-0.5 text-xs text-muted-foreground">Received or cancelled requests retain cost, attachment, and approval history.</p></div>{archivedSupply.length === 0 ? <p className="px-5 py-10 text-center text-sm text-muted-foreground">No archived supply requests.</p> : <div className="divide-y divide-border">{archivedSupply.map((request) => { const location = LOCATIONS.find((item) => item.id === request.locationId); const archiveEvent = getArchiveEvent(request.id); return <div key={request.id} className="flex flex-col gap-3 px-5 py-4 opacity-80 hover:opacity-100 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><Link href={`/supply-requests/${request.id}`} className="truncate text-sm font-medium hover:text-primary hover:underline">{request.itemName}</Link><p className="mt-0.5 text-xs text-muted-foreground">Supply Request · {location?.name}{request.area ? ` · ${request.area}` : ""}</p><div className="mt-2"><SupplyStatusBadge status={request.fulfillmentStatus} /></div></div><div className="text-xs text-muted-foreground sm:text-right"><p>{archiveEvent ? `Archived by ${archiveEvent.user}` : "Archived"}</p><p className="mt-0.5">{new Date(archiveEvent?.timestamp ?? request.lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div><div className="flex items-center gap-2">{role === "owner" && <Button variant="ghost" size="sm" className="gap-1 text-primary" onClick={() => restoreSupplyRequest(request.id)}><RotateCcw className="h-3.5 w-3.5" />Restore</Button>}<Button render={<Link href={`/supply-requests/${request.id}`} />} nativeButton={false} variant="ghost" size="icon" aria-label={`Open ${request.itemName}`}><ExternalLink className="h-3.5 w-3.5" /></Button></div></div> })}</div>}</div>
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"><div className="border-b border-border px-5 py-4"><h2 className="text-sm font-semibold">Archived Supply Requests ({archivedSupply.length})</h2><p className="mt-0.5 text-xs text-muted-foreground">Received or cancelled requests retain cost, attachment, and approval history.</p></div>{archivedSupply.length === 0 ? <p className="px-5 py-10 text-center text-sm text-muted-foreground">No archived supply requests.</p> : <div className="divide-y divide-border">{archivedSupply.map((request) => { const location = LOCATIONS.find((item) => item.id === request.locationId); const archiveEvent = getArchiveEvent(request.id); return <div key={request.id} className="flex flex-col gap-3 px-5 py-4 opacity-80 hover:opacity-100 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><Link href={`/supply-requests/${request.id}`} className="truncate text-sm font-medium hover:text-primary hover:underline">{request.itemName}</Link><p className="mt-0.5 text-xs text-muted-foreground">Supply Request · {location?.name}{request.area ? ` · ${request.area}` : ""}</p><div className="mt-2"><SupplyStatusBadge status={request.fulfillmentStatus} /></div></div><div className="text-xs text-muted-foreground sm:text-right"><p>{archiveEvent ? `Archived by ${archiveEvent.user}` : "Archived"}</p><p className="mt-0.5">{new Date(archiveEvent?.timestamp ?? request.lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div><div className="flex flex-wrap items-center gap-2">{role === "owner" && <><Button variant="ghost" size="sm" className="gap-1 text-primary" onClick={() => restoreSupplyRequest(request.id)}><RotateCcw className="h-3.5 w-3.5" />Restore</Button><Button variant="ghost" size="sm" className="gap-1 text-destructive hover:bg-destructive/10" onClick={() => setDeleteTarget({ kind: "supply", id: request.id, label: `SUP-${request.requestNumber ?? request.id} · ${request.title}` })}><Trash2 className="h-3.5 w-3.5" />Permanently delete</Button></>}<Button render={<Link href={`/supply-requests/${request.id}`} />} nativeButton={false} variant="ghost" size="icon" aria-label={`Open ${request.itemName}`}><ExternalLink className="h-3.5 w-3.5" /></Button></div></div> })}</div>}</div>
+      <PermanentDeleteDialog
+        open={deleteTarget !== null}
+        recordLabel={deleteTarget?.label ?? "this archived record"}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+        onConfirm={handlePermanentDelete}
+      />
     </div>
   )
 }

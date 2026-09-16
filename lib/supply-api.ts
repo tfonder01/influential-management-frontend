@@ -165,6 +165,7 @@ export async function reopenCancelledSupplyRequestApi(id: string): Promise<Suppl
 }
 export const archiveSupplyRequestApi = (id: string) => supplyAction(`/api/supply-requests/${id}/archive`)
 export const restoreSupplyRequestApi = (id: string) => supplyAction(`/api/supply-requests/${id}/restore`)
+export const permanentlyDeleteSupplyRequestApi = (id: string) => apiClient.request<void>(`/api/supply-requests/${id}/permanent`, { method: "DELETE" })
 export const listSupplyCommentsApi = (id: string) => apiClient.request<ApiSupplyComment[]>(`/api/supply-requests/${id}/comments`)
 export const addSupplyCommentApi = (id: string, body: string, mentionedUserIds: string[] = []) => apiClient.request<ApiSupplyComment>(`/api/supply-requests/${id}/comments`, { method: "POST", body: JSON.stringify({ body, mentionedUserIds }) })
 export type ApiSupplyAttachmentType = "REQUEST_PHOTO" | "QUOTE" | "RECEIPT" | "INVOICE" | "OTHER"

@@ -438,8 +438,8 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       : allSupplyRequests.filter((request) => request.locationId === currentUser.locationId)
 
   const demoDashboardSummary = useMemo(
-    () => productionMode ? null : buildDashboardSummary(records, maintenanceRequests, supplyRequests, role),
-    [productionMode, records, maintenanceRequests, supplyRequests, role]
+    () => productionMode ? null : buildDashboardSummary(records, maintenanceRequests, supplyRequests, role, locations),
+    [productionMode, records, maintenanceRequests, supplyRequests, role, locations]
   )
 
   const refreshDashboardSummary = useCallback(async () => {
