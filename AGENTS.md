@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## Engineering Instruction Map
+
+This file is the universal entry point for repository work. Before implementation or review, read the relevant files in `.engineering/`: `project-context.md`, `frontend-standards.md`, `definition-of-done.md`, and either `coding-agent.md` or `testing-agent.md` for the assigned role. These files supplement, and do not replace, the repository-specific rules below.
+
 ## Project
 
 Influential Management Frontend

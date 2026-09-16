@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## Instruction Hierarchy
+
+Start with `AGENTS.md`, then read the relevant guidance in `.engineering/` before implementation or review. Preserve the repository-specific product and workflow context below; `.engineering/` provides shared standards and agent workflows without replacing these rules.
+
 ## Project Context
 
 This is the frontend for the Influential Management Operations & Compliance platform.
