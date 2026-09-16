@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useId, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, Eye, EyeOff, Loader2 } from "lucide-react"
 import { useAuth } from "@/lib/auth"
+import { authenticatedDestination } from "@/lib/auth-navigation"
 import { ApiClientError } from "@/lib/api-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -46,7 +47,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     setResetComplete(new URLSearchParams(window.location.search).get("reset") === "success")
-    if (!isProductionMode || status === "authenticated") router.replace("/dashboard")
+    if (!isProductionMode || status === "authenticated") {
+      router.replace(authenticatedDestination(window.location.search))
+    }
   }, [isProductionMode, status, router])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -59,7 +62,7 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       await login(email, password)
-      router.replace("/dashboard")
+      router.replace(authenticatedDestination(window.location.search))
     } catch (cause) {
       setError(describeLoginFailure(cause))
       setSubmitting(false)

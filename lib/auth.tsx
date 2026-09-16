@@ -2,8 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 import { apiClient, type SessionUser } from "./api-client"
+import type { AuthStatus } from "./auth-navigation"
 
-type AuthStatus = "loading" | "authenticated" | "anonymous"
 interface AuthContextValue {
   status: AuthStatus
   user: SessionUser | null
