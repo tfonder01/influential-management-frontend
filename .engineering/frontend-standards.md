@@ -15,6 +15,7 @@
 - Preserve responsive behavior. Check representative phone, tablet, and desktop widths; prevent overflow and unreadable scaled-down desktop layouts.
 - Preserve accessibility and keyboard behavior: semantic controls, focus visibility, labels, valid nesting, contrast, and reduced motion.
 - Keep destructive, approval, archive/restore, upload, and status actions clear and success-aware. Do not navigate or claim success before server confirmation.
+- Reuse the shared attachment UI pattern for file lists and upload controls instead of creating module-specific layouts. When workflow semantics require distinct groups, such as Maintenance Original Photos, Completion Photos, and Invoices, preserve those groups while reusing the shared attachment rows and upload controls. Prefer large, obvious upload targets and readable file rows over cramped inline controls.
 
 ## Forms and input formatting
 

@@ -20,7 +20,6 @@ import {
   RefreshCw,
   Loader2,
   Pencil,
-  Upload,
   Trash2,
   MoreHorizontal,
 } from "lucide-react"
@@ -47,6 +46,13 @@ import {
 import { MentionCommentComposer, MentionText } from "@/components/comment-mentions"
 import { EditRecordModal } from "@/components/edit-record-modal"
 import { FilePreviewModal } from "@/components/file-preview-modal"
+import {
+  AttachmentEmptyState,
+  AttachmentRow,
+  AttachmentSectionHeader,
+  AttachmentUploadControl,
+  attachmentActionButtonClass,
+} from "@/components/attachment-ui"
 import { cn } from "@/lib/utils"
 import type { Comment } from "@/lib/types"
 import { getRecordWorkspace, isOperationsRecord } from "@/lib/record-workspaces"
@@ -492,12 +498,11 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
 
           {/* Attached Files */}
           <div className="order-3 min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">
-                Attached Documents <span className="font-normal text-muted-foreground">({displayedAttachments.length})</span>
-              </h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">PDF, JPG, and PNG files attached to this record.</p>
-            </div>
+            <AttachmentSectionHeader
+              title="Attached Documents"
+              helper="PDF, JPG, and PNG files attached to this record."
+              count={displayedAttachments.length}
+            />
             {attachmentError && (
               <div role="alert" className="mt-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -511,24 +516,16 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                   ? attachmentAction === "remove:" + attachment.fileId || attachmentAction === "replace:" + attachment.fileId
                   : false
                 return (
-                  <div
+                  <AttachmentRow
                     key={attachment.fileId ?? attachment.name + ":" + index}
-                    className="group flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 transition-colors hover:bg-muted/40"
-                  >
-                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <button
-                      type="button"
-                      onClick={() => handleAttachmentClick(attachment)}
-                      className="min-w-0 flex-1 truncate rounded px-1 py-1.5 text-left text-sm font-medium text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      title={label}
-                    >
-                      {label}
-                    </button>
-                    <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                    label={label}
+                    onOpen={() => handleAttachmentClick(attachment)}
+                    actions={
+                      <>
                       <button
                         type="button"
                         onClick={() => void handleDownload(attachment)}
-                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className={attachmentActionButtonClass}
                         aria-label={`Download ${label}`}
                         title="Download"
                       >
@@ -537,7 +534,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                       <button
                         type="button"
                         onClick={() => void handleOpenInNewTab(attachment)}
-                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className={attachmentActionButtonClass}
                         aria-label={`Open ${label} in new tab`}
                         title="Open in new tab"
                       >
@@ -550,7 +547,7 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                               <button
                                 type="button"
                                 disabled={busy}
-                                className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                                className={attachmentActionButtonClass}
                                 aria-label={`More actions for ${label}`}
                                 title="More actions"
                               />
@@ -585,37 +582,27 @@ export default function RecordDetailPage({ params }: { params: Promise<{ id: str
                           }}
                         />
                       )}
-                    </div>
-                  </div>
+                      </>
+                    }
+                  />
                 )
               })}
               {displayedAttachments.length === 0 && (
-                <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-                  No attachments.
-                </p>
+                <AttachmentEmptyState>No attachments.</AttachmentEmptyState>
               )}
             </div>
             {canManageAttachments && (
-              <label
-                className={cn(
-                  "mt-3 flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-border px-2 py-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/5 focus-within:ring-2 focus-within:ring-ring",
-                  attachmentAction && "pointer-events-none opacity-60"
-                )}
-              >
-                {attachmentAction === "add" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                Add Attachment
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-                  className="sr-only"
-                  disabled={attachmentAction !== null}
-                  onChange={(event) => {
-                    const file = event.currentTarget.files?.[0]
-                    event.currentTarget.value = ""
-                    if (file) void handleAddAttachment(file)
-                  }}
-                />
-              </label>
+              <AttachmentUploadControl
+                label="Add Attachment"
+                accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                disabled={attachmentAction !== null}
+                busy={attachmentAction === "add"}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0]
+                  event.currentTarget.value = ""
+                  if (file) void handleAddAttachment(file)
+                }}
+              />
             )}
           </div>
 

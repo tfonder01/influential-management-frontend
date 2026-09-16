@@ -55,6 +55,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { SupplyApprovalBadge, SupplyPriorityBadge, SupplyStatusBadge } from "@/components/supply-badges"
 import { FilePreviewModal } from "@/components/file-preview-modal"
+import {
+  AttachmentEmptyState,
+  AttachmentRow,
+  AttachmentSectionHeader,
+  AttachmentUploadControl,
+  attachmentActionButtonClass,
+} from "@/components/attachment-ui"
 import { cn } from "@/lib/utils"
 import { roleLabel } from "@/lib/role-labels"
 import { listActivity, type ApiActivityItem } from "@/lib/activity-api"
@@ -724,7 +731,11 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
           </section>
 
           <section className="order-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
-            <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold text-foreground">Attachments</h2><p className="mt-0.5 text-xs text-muted-foreground">{isDemoMode ? "Prototype attachments preserve filenames and upload history." : "Photos, quotes, receipts, and invoices are attached directly to this supply request."}</p></div><span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{request.photos.length}</span></div>
+            <AttachmentSectionHeader
+              title="Attachments"
+              helper={isDemoMode ? "Prototype attachments preserve filenames and upload history." : "Photos, quotes, receipts, and invoices attached to this supply request."}
+              count={request.photos.length}
+            />
             {attachmentError && <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50/70 px-3 py-2.5 text-sm text-red-700">{attachmentError}</div>}
             <div className="mt-4 space-y-1.5">
               {request.photos.map((item) => {
@@ -732,15 +743,18 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
                 const label = item.displayName ?? item.name
                 const busy = item.fileId ? fileActionKey === `remove:${item.fileId}` || fileActionKey === `replace:${item.fileId}` : false
                 return (
-                  <div key={key} className="flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-1">
-                    {item.attachmentType && <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{item.attachmentType}</span>}
-                    <button type="button" onClick={() => handleAttachmentClick(item)} className="min-w-0 flex-1 truncate rounded px-1 py-1 text-left text-xs text-foreground transition-colors hover:text-primary" title={label}>{label}</button>
-                    <button type="button" onClick={() => void handleDownloadAttachment(item)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Download ${label}`} title="Download"><Download className="h-3.5 w-3.5" /></button>
-                    <button type="button" onClick={() => void handleOpenInNewTab(item)} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Open ${label} in new tab`} title="Open in new tab"><ExternalLink className="h-3.5 w-3.5" /></button>
+                  <AttachmentRow
+                    key={key}
+                    label={label}
+                    onOpen={() => handleAttachmentClick(item)}
+                    actions={
+                      <>
+                    <button type="button" onClick={() => void handleDownloadAttachment(item)} className={attachmentActionButtonClass} aria-label={`Download ${label}`} title="Download"><Download className="h-3.5 w-3.5" /></button>
+                    <button type="button" onClick={() => void handleOpenInNewTab(item)} className={attachmentActionButtonClass} aria-label={`Open ${label} in new tab`} title="Open in new tab"><ExternalLink className="h-3.5 w-3.5" /></button>
                     {canManageAttachments && item.fileId && (
                       <DropdownMenu>
                         <DropdownMenuTrigger
-                          render={<button type="button" disabled={busy} className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60" aria-label={`More actions for ${label}`} title="More actions" />}
+                          render={<button type="button" disabled={busy} className={attachmentActionButtonClass} aria-label={`More actions for ${label}`} title="More actions" />}
                         >
                           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MoreHorizontal className="h-3.5 w-3.5" />}
                         </DropdownMenuTrigger>
@@ -751,12 +765,22 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )}
-                  </div>
+                      </>
+                    }
+                  />
                 )
               })}
-              {request.photos.length === 0 && <p className="py-2 text-center text-[11px] text-muted-foreground">None attached</p>}
+              {request.photos.length === 0 && <AttachmentEmptyState>No attachments yet.</AttachmentEmptyState>}
             </div>
-            {canEdit && <label className={cn("mt-3 flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-border px-2 py-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/5", attachmentAction && "pointer-events-none opacity-60")}><Upload className={cn("h-3.5 w-3.5", attachmentAction && "animate-pulse")} />Upload<input type="file" className="sr-only" accept="image/*,.pdf" disabled={attachmentAction} onChange={(event) => { void handleFileInput(event) }} /></label>}
+            {canEdit && (
+              <AttachmentUploadControl
+                label="Add Attachment"
+                accept="image/*,.pdf"
+                disabled={Boolean(attachmentAction)}
+                busy={Boolean(attachmentAction)}
+                onChange={(event) => { void handleFileInput(event) }}
+              />
+            )}
             <input ref={replaceInputRef} type="file" className="sr-only" accept="image/*,.pdf" onChange={handleReplaceInputChange} />
           </section>
 
