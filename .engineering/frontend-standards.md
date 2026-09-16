@@ -16,6 +16,17 @@
 - Preserve accessibility and keyboard behavior: semantic controls, focus visibility, labels, valid nesting, contrast, and reduced motion.
 - Keep destructive, approval, archive/restore, upload, and status actions clear and success-aware. Do not navigate or claim success before server confirmation.
 
+## Forms and input formatting
+
+- Reuse shared form/input utilities instead of implementing formatting ad hoc in individual components.
+- US phone-number inputs should format user-entered digits as `(###) ###-####` while typing when practical.
+- Accept pasted formatted or unformatted US phone numbers.
+- Normalize phone numbers before persistence according to the existing API/data contract.
+- Existing stored US phone values should render in the standard display format when possible.
+- Do not apply US formatting rules to fields explicitly designed for international phone numbers.
+- Phone-number formatting must not prevent normal editing, deletion, pasting, or mobile keyboard use.
+- Holding Backspace must be able to clear the field to empty without selecting text.
+
 ## Configuration, privacy, and modes
 
 - Keep demo and production paths explicit. Production must use the authenticated backend and never depend on mock data, demo role switching, or frontend-only persistence.

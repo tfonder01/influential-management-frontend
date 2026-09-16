@@ -69,14 +69,6 @@ export const MAINTENANCE_AREAS = [
   "Other",
 ] as const
 
-/** Temporary configurable presets until a persisted vendor directory is introduced. */
-export const MAINTENANCE_VENDOR_PRESETS = [
-  { name: "In-House Maintenance", contact: "(407) 555-0100" },
-  { name: "Sunshine Facility Services", contact: "(407) 555-0142" },
-  { name: "Central Florida Plumbing", contact: "(407) 555-0164" },
-  { name: "BrightLine Electrical", contact: "(407) 555-0187" },
-] as const
-
 export const SUPPLY_CATEGORIES: SupplyCategory[] = ["Supplies", "Furniture", "Fixtures", "Equipment", "Other"]
 
 export const SUPPLY_AREAS = [

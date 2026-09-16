@@ -33,9 +33,10 @@ import {
   XCircle,
 } from "lucide-react"
 import { useApp } from "@/lib/store"
-import { MAINTENANCE_VENDOR_PRESETS, MAINTENANCE_CATEGORIES, USERS } from "@/lib/mock-data"
+import { MAINTENANCE_CATEGORIES, USERS } from "@/lib/mock-data"
 import type { Comment, MaintenanceAttachment, MaintenanceCategory, MaintenancePriority, MaintenanceStatus, Role } from "@/lib/types"
 import { priorityLabel } from "@/lib/priority-labels"
+import { formatUsPhoneNumber, normalizeUsPhoneNumber } from "@/lib/phone"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -74,7 +75,6 @@ import {
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
 const fieldClass = "h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
-const CUSTOM_VENDOR = "__custom_vendor__"
 const LEGACY_ASSIGNEE = "__legacy_assignee__"
 
 function normalizeText(value: string | null | undefined) {
@@ -184,7 +184,6 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
   const [savingDetails, setSavingDetails] = useState(false)
   const [commentSubmitting, setCommentSubmitting] = useState(false)
   const [vendor, setVendor] = useState("")
-  const [vendorSelection, setVendorSelection] = useState("")
   const [assignedUserId, setAssignedUserId] = useState("")
   const [assignableUsers, setAssignableUsers] = useState<MentionableUser[]>([])
   const [assignableUsersLoading, setAssignableUsersLoading] = useState(false)
@@ -209,14 +208,10 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
 
   useEffect(() => {
     if (!request) return
-    const vendorName = request.vendor ?? ""
-    setVendor(vendorName)
-    setVendorSelection(vendorName
-      ? MAINTENANCE_VENDOR_PRESETS.some((preset) => preset.name === vendorName) ? vendorName : CUSTOM_VENDOR
-      : "")
+    setVendor(request.vendor ?? "")
     const demoAssignee = isDemoMode ? USERS.find((user) => user.name === request.assignedTo) : undefined
     setAssignedUserId(request.assignedUserId ?? demoAssignee?.id ?? (request.assignedTo ? LEGACY_ASSIGNEE : ""))
-    setVendorContact(request.vendorContact ?? "")
+    setVendorContact(formatUsPhoneNumber(request.vendorContact))
     setScheduledDate(request.scheduledDate ?? "")
     setEstimatedCost(request.estimatedCost?.toString() ?? "")
     setFinalCost(request.finalCost?.toString() ?? "")
@@ -336,7 +331,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     ?? (request.assignedTo ? LEGACY_ASSIGNEE : "")
   const repairDetailsDirty = assignedUserId !== persistedAssignmentSelection
     || normalizeText(vendor) !== normalizeText(request.vendor)
-    || normalizeText(vendorContact) !== normalizeText(request.vendorContact)
+    || normalizeUsPhoneNumber(vendorContact) !== normalizeUsPhoneNumber(request.vendorContact)
     || normalizeDate(scheduledDate) !== normalizeDate(request.scheduledDate)
     || normalizeCost(estimatedCost) !== normalizeCost(request.estimatedCost)
     || normalizeCost(finalCost) !== normalizeCost(request.finalCost)
@@ -472,23 +467,6 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     setEditOpen(true)
   }
 
-  const changeVendorSelection = (selection: string) => {
-    setVendorSelection(selection)
-    if (!selection) {
-      setVendor("")
-      setVendorContact("")
-      return
-    }
-    if (selection === CUSTOM_VENDOR) {
-      if (MAINTENANCE_VENDOR_PRESETS.some((preset) => preset.name === vendor)) setVendor("")
-      setVendorContact("")
-      return
-    }
-    const preset = MAINTENANCE_VENDOR_PRESETS.find((item) => item.name === selection)
-    setVendor(selection)
-    setVendorContact(preset?.contact ?? "")
-  }
-
   const saveRequestDetails = async () => {
     if (editSaving) return
     if (!editTitle.trim() || !editCategory) {
@@ -520,7 +498,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
         area: editArea.trim() || undefined,
         assignedUserId: persistedAssignedUserId,
         vendorName: vendor || undefined,
-        vendorContact: vendorContact || undefined,
+        vendorContact: normalizeUsPhoneNumber(vendorContact) || undefined,
         scheduledDate: scheduledDate || undefined,
         estimatedCost: editEstimatedCost ? Number(editEstimatedCost) : undefined,
         finalCost: finalCost ? Number(finalCost) : undefined,
@@ -541,7 +519,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
         assignedTo: selectedAssignee?.displayName,
         assignedUserId: selectedAssignee?.id,
         assignedUserRole: selectedAssignee?.role.toLowerCase() as Role | undefined,
-        vendorContact: vendorContact || undefined,
+        vendorContact: normalizeUsPhoneNumber(vendorContact) || undefined,
         scheduledDate: scheduledDate || undefined,
         estimatedCost: estimatedCost ? Number(estimatedCost) : undefined,
         finalCost: finalCost ? Number(finalCost) : undefined,
@@ -559,7 +537,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
         area: request.area || undefined,
         assignedUserId: persistedAssignedUserId,
         vendorName: vendor || undefined,
-        vendorContact: vendorContact || undefined,
+        vendorContact: normalizeUsPhoneNumber(vendorContact) || undefined,
         scheduledDate: scheduledDate || undefined,
         estimatedCost: estimatedCost ? Number(estimatedCost) : undefined,
         finalCost: finalCost ? Number(finalCost) : undefined,
@@ -957,29 +935,17 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
                   {assignedUserId === LEGACY_ASSIGNEE && request.assignedTo && <option value={LEGACY_ASSIGNEE} disabled>{request.assignedTo} (legacy assignment)</option>}
                   {assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.displayName} &mdash; {roleLabel(user.role.toLowerCase() as Role)}</option>)}
                 </select>
+                <p className="text-[11px] text-muted-foreground">Assign a portal user responsible for coordinating this request.</p>
                 {assignableUsersError && <p className="text-xs text-destructive">{assignableUsersError}</p>}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="vendor">Vendor</Label>
-                <select id="vendor" className={fieldClass} value={vendorSelection} onChange={(event) => changeVendorSelection(event.target.value)} disabled={!canEdit || savingDetails}>
-                  <option value="">Not assigned</option>
-                  {MAINTENANCE_VENDOR_PRESETS.map((preset) => <option key={preset.name} value={preset.name}>{preset.name}</option>)}
-                  <option value={CUSTOM_VENDOR}>Other / Custom Vendor</option>
-                </select>
-                <p className="text-[11px] text-muted-foreground">Temporary configured presets; vendor directory management is not yet available.</p>
+                <Label htmlFor="vendor">Vendor <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                <Input id="vendor" value={vendor} onChange={(event) => setVendor(event.target.value)} placeholder="Sunshine Facility Services" maxLength={200} disabled={!canEdit || savingDetails} />
               </div>
-              {vendorSelection === CUSTOM_VENDOR && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="custom-vendor">Vendor Name</Label>
-                  <Input id="custom-vendor" value={vendor} onChange={(event) => setVendor(event.target.value)} placeholder="Enter vendor name" disabled={!canEdit || savingDetails} />
-                </div>
-              )}
-              {vendorSelection && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="vendor-contact">Vendor Contact <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                  <Input id="vendor-contact" value={vendorContact} onChange={(event) => setVendorContact(event.target.value)} placeholder="Phone or email" disabled={!canEdit || savingDetails} />
-                </div>
-              )}
+              <div className="space-y-1.5">
+                <Label htmlFor="vendor-contact">Vendor Contact <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                <Input id="vendor-contact" type="tel" inputMode="tel" autoComplete="tel-national" value={vendorContact} onChange={(event) => setVendorContact(formatUsPhoneNumber(event.target.value))} placeholder="(407) 555-0142" maxLength={200} disabled={!canEdit || savingDetails} />
+              </div>
               <div className="space-y-1.5"><Label htmlFor="scheduled-date">Scheduled Date</Label><Input id="scheduled-date" type="date" value={scheduledDate} onChange={(event) => setScheduledDate(event.target.value)} disabled={!canEdit || savingDetails} /></div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
