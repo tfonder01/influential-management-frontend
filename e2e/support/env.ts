@@ -29,6 +29,23 @@ export function stagingBaseUrl(): string {
   return url.origin
 }
 
+export function stagingBackendUrl(): string {
+  const raw = required("PLAYWRIGHT_BACKEND_URL")
+
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    throw new Error("PLAYWRIGHT_BACKEND_URL must be an absolute STG URL")
+  }
+
+  if (url.protocol !== "https:") {
+    throw new Error(`Refusing to poll a non-HTTPS STG backend URL: ${url.origin}`)
+  }
+
+  return url.origin
+}
+
 export function ownerCredentials(): TestCredentials {
   return {
     email: required("PLAYWRIGHT_OWNER_EMAIL"),
