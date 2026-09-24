@@ -18,6 +18,7 @@ import {
   getDashboardSummaryApi,
   type DashboardSummary,
 } from "./dashboard-api"
+import { preferNewestServerState } from "./server-state"
 import {
   RECORDS as INITIAL_RECORDS,
   COMMENTS as INITIAL_COMMENTS,
@@ -123,6 +124,8 @@ function mergeMaintenanceSummaries(previous: MaintenanceRequest[], summaries: Ma
   return summaries.map((summary) => {
     const detail = previousById.get(summary.id)
     if (!detail) return summary
+    const newest = preferNewestServerState(detail, summary)
+    if (newest === detail) return detail
     return {
       ...summary,
       description: detail.description,
@@ -146,6 +149,8 @@ function mergeSupplySummaries(previous: SupplyRequest[], summaries: SupplyReques
   return summaries.map((summary) => {
     const detail = previousById.get(summary.id)
     if (!detail) return summary
+    const newest = preferNewestServerState(detail, summary)
+    if (newest === detail) return detail
     return {
       ...summary,
       description: detail.description,

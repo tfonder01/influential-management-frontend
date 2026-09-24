@@ -12,7 +12,6 @@ import {
   createComplianceRecord,
   createMaintenanceRequest,
   createSupplyRequest,
-  ensureNextActionReady,
   expectUiAfterMutation,
   login,
   logout,
@@ -22,6 +21,17 @@ import {
 } from "./support/portal"
 
 test.describe("Influential Management STG critical paths", () => {
+  test("anonymous root presents the branded sign-in entry", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByRole("heading", { name: "Influential Management", exact: true })).toBeVisible()
+    await expect(page.getByText("Operations & Compliance Portal", { exact: true })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Sign In", exact: true })).toHaveAttribute("href", "/login")
+    await expect(page.getByRole("link", { name: "support@sentrypointsystems.com", exact: true })).toHaveAttribute(
+      "href",
+      "mailto:support@sentrypointsystems.com"
+    )
+  })
+
   test("Owner login survives refresh and logout protects the dashboard", async ({ page }) => {
     await login(page, ownerCredentials())
 
@@ -174,14 +184,11 @@ test.describe("Influential Management STG critical paths", () => {
       })
       await expectUiAfterMutation(
         workflowProgress(page, "Maintenance", "Approved / Ready"),
-        "Approve maintenance request"
+        "Approve maintenance request",
+        20_000,
+        false
       )
-      await ensureNextActionReady(
-        page,
-        page.getByRole("button", { name: "Mark In Progress" }),
-        workflowProgress(page, "Maintenance", "Approved / Ready"),
-        "Approve maintenance request"
-      )
+      await expect(page.getByRole("button", { name: "Mark In Progress" })).toBeEnabled()
       await clickAndWaitForApi(page, page.getByRole("button", { name: "Mark In Progress" }), {
         label: "Mark maintenance request in progress",
         method: "PATCH",
@@ -189,14 +196,11 @@ test.describe("Influential Management STG critical paths", () => {
       })
       await expectUiAfterMutation(
         workflowProgress(page, "Maintenance", "In Progress"),
-        "Mark maintenance request in progress"
+        "Mark maintenance request in progress",
+        20_000,
+        false
       )
-      await ensureNextActionReady(
-        page,
-        page.getByRole("button", { name: "Mark Complete" }),
-        workflowProgress(page, "Maintenance", "In Progress"),
-        "Mark maintenance request in progress"
-      )
+      await expect(page.getByRole("button", { name: "Mark Complete" })).toBeEnabled()
       await clickAndWaitForApi(page, page.getByRole("button", { name: "Mark Complete" }), {
         label: "Complete maintenance request",
         method: "PATCH",
@@ -204,7 +208,9 @@ test.describe("Influential Management STG critical paths", () => {
       })
       await expectUiAfterMutation(
         workflowProgress(page, "Maintenance", "Completed"),
-        "Complete maintenance request"
+        "Complete maintenance request",
+        20_000,
+        false
       )
 
       await archiveMaintenanceIfActive(page, requestPath)
@@ -263,14 +269,11 @@ test.describe("Influential Management STG critical paths", () => {
       })
       await expectUiAfterMutation(
         workflowProgress(page, "Supply", "Approved / Ready"),
-        "Approve supply request"
+        "Approve supply request",
+        20_000,
+        false
       )
-      await ensureNextActionReady(
-        page,
-        page.getByRole("button", { name: "Mark Ordered" }),
-        workflowProgress(page, "Supply", "Approved / Ready"),
-        "Approve supply request"
-      )
+      await expect(page.getByRole("button", { name: "Mark Ordered" })).toBeEnabled()
       await clickAndWaitForApi(page, page.getByRole("button", { name: "Mark Ordered" }), {
         label: "Mark supply request ordered",
         method: "PATCH",
@@ -278,14 +281,11 @@ test.describe("Influential Management STG critical paths", () => {
       })
       await expectUiAfterMutation(
         workflowProgress(page, "Supply", "Ordered"),
-        "Mark supply request ordered"
+        "Mark supply request ordered",
+        20_000,
+        false
       )
-      await ensureNextActionReady(
-        page,
-        page.getByRole("button", { name: "Mark Received" }),
-        workflowProgress(page, "Supply", "Ordered"),
-        "Mark supply request ordered"
-      )
+      await expect(page.getByRole("button", { name: "Mark Received" })).toBeEnabled()
       await clickAndWaitForApi(page, page.getByRole("button", { name: "Mark Received" }), {
         label: "Mark supply request received",
         method: "PATCH",
@@ -293,7 +293,9 @@ test.describe("Influential Management STG critical paths", () => {
       })
       await expectUiAfterMutation(
         workflowProgress(page, "Supply", "Received"),
-        "Mark supply request received"
+        "Mark supply request received",
+        20_000,
+        false
       )
       workflowCompleted = true
     } finally {

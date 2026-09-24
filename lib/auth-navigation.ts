@@ -1,5 +1,12 @@
 export type AuthStatus = "loading" | "authenticated" | "anonymous"
 
+export type RootRouteDecision = "loading" | "public" | "redirect"
+
+export function rootRouteDecision(isProductionMode: boolean, status: AuthStatus): RootRouteDecision {
+  if (!isProductionMode || status === "authenticated") return "redirect"
+  return status === "loading" ? "loading" : "public"
+}
+
 export type ProtectedRouteDecision = "allow" | "loading" | "redirect"
 
 const INTERNAL_ORIGIN = "https://internal.invalid"
