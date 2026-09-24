@@ -17,7 +17,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   UserRoundCog,
-  LifeBuoy,
+  CircleHelp,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/lib/store"
@@ -138,7 +138,7 @@ export function Sidebar({
                   collapsed && "justify-center px-0"
                 )}
               >
-                <LifeBuoy className="h-4 w-4 shrink-0 opacity-75 transition-[opacity,transform] duration-150 group-hover:translate-x-px group-hover:opacity-100" />
+                <CircleHelp className="h-4 w-4 shrink-0 opacity-75 transition-[opacity,transform] duration-150 group-hover:translate-x-px group-hover:opacity-100" />
                 {!collapsed && <span className="flex-1 text-left">Help &amp; support</span>}
               </button>
             </li>

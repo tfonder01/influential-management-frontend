@@ -15,6 +15,9 @@ test("authenticated shell renders one shared support dialog for both entry point
 })
 
 test("account menu and sidebar expose support actions without adding a route", () => {
+  assert.equal(topbarSource.includes("<CircleHelp />"), true)
+  assert.equal(sidebarSource.includes("<CircleHelp className="), true)
+  assert.doesNotMatch(topbarSource + sidebarSource, /LifeBuoy/)
   assert.match(topbarSource, /<DropdownMenuItem onClick=\{onOpenSupport\}>/)
   assert.match(sidebarSource, /aria-label="Help & support"/)
   assert.match(sidebarSource, /onOpenSupport\(\)/)

@@ -1,10 +1,10 @@
 export type AuthStatus = "loading" | "authenticated" | "anonymous"
 
-export type RootRouteDecision = "loading" | "public" | "redirect"
+export type RootRouteDecision = "loading" | "dashboard" | "login"
 
 export function rootRouteDecision(isProductionMode: boolean, status: AuthStatus): RootRouteDecision {
-  if (!isProductionMode || status === "authenticated") return "redirect"
-  return status === "loading" ? "loading" : "public"
+  if (!isProductionMode || status === "authenticated") return "dashboard"
+  return status === "loading" ? "loading" : "login"
 }
 
 export type ProtectedRouteDecision = "allow" | "loading" | "redirect"

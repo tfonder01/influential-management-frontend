@@ -4,7 +4,15 @@ import { cn } from "@/lib/utils"
  * Full-page background/layout wrapper shared by all authentication screens
  * (login now; invite/setup/password reset in Sprint 7).
  */
-export function AuthShell({ children, className }: { children: React.ReactNode; className?: string }) {
+export function AuthShell({
+  children,
+  className,
+  contentClassName,
+}: {
+  children: React.ReactNode
+  className?: string
+  contentClassName?: string
+}) {
   return (
     <main
       className={cn(
@@ -21,7 +29,7 @@ export function AuthShell({ children, className }: { children: React.ReactNode; 
             "radial-gradient(60% 50% at 50% 0%, oklch(0.23 0.055 305 / 0.08), transparent), radial-gradient(50% 40% at 100% 100%, oklch(0.52 0.17 250 / 0.06), transparent)",
         }}
       />
-      <div className="relative w-full max-w-sm">{children}</div>
+      <div className={cn("relative w-full max-w-sm", contentClassName)}>{children}</div>
     </main>
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { Upload, ChevronDown, Check, LifeBuoy, Menu, Package, Plus, Wrench } from "lucide-react"
+import { Upload, ChevronDown, Check, CircleHelp, Menu, Package, Plus, Wrench } from "lucide-react"
 import { useState } from "react"
 import { useApp } from "@/lib/store"
 import { Button } from "@/components/ui/button"
@@ -153,7 +153,7 @@ export function Topbar({
               <DropdownMenuSeparator />
               {!isDemoMode && (
                 <DropdownMenuItem onClick={onOpenSupport}>
-                  <LifeBuoy />
+                  <CircleHelp />
                   Help &amp; support
                 </DropdownMenuItem>
               )}
