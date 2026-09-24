@@ -17,6 +17,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   UserRoundCog,
+  LifeBuoy,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/lib/store"
@@ -41,13 +42,15 @@ export function Sidebar({
   onClose,
   collapsed = false,
   onToggleCollapsed,
+  onOpenSupport,
 }: {
   onClose?: () => void
   collapsed?: boolean
   onToggleCollapsed?: () => void
+  onOpenSupport: () => void
 }) {
   const pathname = usePathname()
-  const { role, currentUser, dashboardSummary, records } = useApp()
+  const { role, currentUser, dashboardSummary, records, isDemoMode } = useApp()
 
   const needsReviewCount = dashboardSummary?.needsReview.total ?? 0
   const navigation = resolveAppNavigation(pathname, records)
@@ -120,6 +123,26 @@ export function Sidebar({
               </li>
             )
           })}
+          {!isDemoMode && (
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenSupport()
+                  onClose?.()
+                }}
+                title={collapsed ? "Help & support" : undefined}
+                aria-label="Help & support"
+                className={cn(
+                  "group flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-sidebar-foreground/70 transition-[color,background-color] duration-150 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring lg:py-2",
+                  collapsed && "justify-center px-0"
+                )}
+              >
+                <LifeBuoy className="h-4 w-4 shrink-0 opacity-75 transition-[opacity,transform] duration-150 group-hover:translate-x-px group-hover:opacity-100" />
+                {!collapsed && <span className="flex-1 text-left">Help &amp; support</span>}
+              </button>
+            </li>
+          )}
         </ul>
       </nav>
 

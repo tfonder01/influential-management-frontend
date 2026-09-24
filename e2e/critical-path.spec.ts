@@ -35,6 +35,41 @@ test.describe("Influential Management STG critical paths", () => {
     await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible()
   })
 
+  test("authenticated support dialog validates a required message without sending email", async ({ page }) => {
+    await login(page, ownerCredentials())
+
+    const supportDialog = page.getByRole("dialog")
+    const sidebarSupport = page.getByRole("button", { name: "Help & support", exact: true })
+    await sidebarSupport.click()
+    await expect(supportDialog).toBeVisible()
+    await expect(supportDialog).toHaveCount(1)
+    await page.getByRole("button", { name: "Cancel", exact: true }).click()
+    await expect(supportDialog).toBeHidden()
+
+    await page.getByRole("button", { name: "Open account menu", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Help & support", exact: true }).click()
+    await expect(supportDialog).toBeVisible()
+    await expect(supportDialog).toHaveCount(1)
+    await expect(page.getByRole("heading", { name: "Help & support", exact: true })).toBeVisible()
+
+    await page.getByRole("button", { name: "Send to support", exact: true }).click()
+    await expect(page.getByRole("alert")).toHaveText("Tell us how we can help.")
+
+    const featureOption = page.getByRole("radio", { name: /Suggest a feature/ })
+    await featureOption.check()
+    await expect(featureOption).toBeChecked()
+    await expect(page.getByPlaceholder("What would you like the portal to help you do?")).toBeVisible()
+
+    await page.getByRole("button", { name: "Cancel", exact: true }).click()
+    await expect(supportDialog).toBeHidden()
+
+    await sidebarSupport.click()
+    await expect(supportDialog).toBeVisible()
+    await expect(supportDialog).toHaveCount(1)
+    await page.getByRole("button", { name: "Cancel", exact: true }).click()
+    await expect(supportDialog).toBeHidden()
+  })
+
   test("Director sees assigned-location data and cannot open another location's request", async ({ browser }) => {
     const owner = await browser.newPage()
     const director = await browser.newPage()

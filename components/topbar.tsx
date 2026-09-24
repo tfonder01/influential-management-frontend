@@ -1,6 +1,6 @@
 "use client"
 
-import { Upload, ChevronDown, Check, Menu, Package, Plus, Wrench } from "lucide-react"
+import { Upload, ChevronDown, Check, LifeBuoy, Menu, Package, Plus, Wrench } from "lucide-react"
 import { useState } from "react"
 import { useApp } from "@/lib/store"
 import { Button } from "@/components/ui/button"
@@ -26,7 +26,15 @@ import { NewSupplyRequestModal } from "@/components/new-supply-request-modal"
 import { resolveAppNavigation } from "@/lib/app-navigation"
 
 
-export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => void; menuOpen?: boolean }) {
+export function Topbar({
+  onMenuClick,
+  menuOpen = false,
+  onOpenSupport,
+}: {
+  onMenuClick?: () => void
+  menuOpen?: boolean
+  onOpenSupport: () => void
+}) {
   const { role, setRole, currentUser, isDemoMode, records } = useApp()
   const { logout } = useAuth()
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -143,6 +151,12 @@ export function Topbar({ onMenuClick, menuOpen = false }: { onMenuClick?: () => 
                 </DropdownMenuLabel>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
+              {!isDemoMode && (
+                <DropdownMenuItem onClick={onOpenSupport}>
+                  <LifeBuoy />
+                  Help &amp; support
+                </DropdownMenuItem>
+              )}
               <DropdownMenuLinkItem render={<Link href="/settings" />}>Settings</DropdownMenuLinkItem>
               {!isDemoMode && <DropdownMenuItem onClick={() => void logout()}>Sign out</DropdownMenuItem>}
             </DropdownMenuContent>

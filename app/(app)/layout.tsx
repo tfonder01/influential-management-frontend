@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { AppProvider } from "@/lib/store"
 import { Sidebar } from "@/components/sidebar"
 import { Topbar } from "@/components/topbar"
 import { cn } from "@/lib/utils"
 import { AuthGate } from "@/components/auth-gate"
 import { useAuth } from "@/lib/auth"
+import { SupportDialog, type SupportDialogHandle } from "@/components/support-dialog"
 
 const SIDEBAR_COLLAPSE_STORAGE_KEY = "im.sidebar.collapsed"
 
@@ -16,6 +17,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // Start expanded on both server and first client render to avoid a hydration mismatch;
   // sync the real preference from localStorage after mount.
   const [collapsed, setCollapsed] = useState(false)
+  const supportDialogRef = useRef<SupportDialogHandle>(null)
 
   useEffect(() => {
     const stored = window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)
@@ -35,6 +37,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
       return next
     })
   }
+
+  const openSupport = () => supportDialogRef.current?.open()
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -56,15 +60,25 @@ function AppShell({ children }: { children: React.ReactNode }) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <Sidebar onClose={() => setSidebarOpen(false)} collapsed={isDesktop && collapsed} onToggleCollapsed={toggleCollapsed} />
+        <Sidebar
+          onClose={() => setSidebarOpen(false)}
+          collapsed={isDesktop && collapsed}
+          onToggleCollapsed={toggleCollapsed}
+          onOpenSupport={openSupport}
+        />
       </div>
 
       <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
-        <Topbar onMenuClick={() => setSidebarOpen((o) => !o)} menuOpen={sidebarOpen} />
+        <Topbar
+          onMenuClick={() => setSidebarOpen((o) => !o)}
+          menuOpen={sidebarOpen}
+          onOpenSupport={openSupport}
+        />
         <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6">
           <div className="page-enter min-w-0">{children}</div>
         </main>
       </div>
+      <SupportDialog ref={supportDialogRef} />
     </div>
   )
 }
