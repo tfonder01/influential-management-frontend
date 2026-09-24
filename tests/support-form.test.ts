@@ -26,6 +26,19 @@ test("message validation rejects blank and oversized submissions", () => {
   assert.equal(supportMessageError("A useful description"), null)
 })
 
+test("message validation accepts normal, long, unbroken, and maximum-length content", () => {
+  const normalSentence = "The save button did not respond after I updated the maintenance request."
+  const longProse = "The portal should keep this normal prose wrapped within the support dialog. ".repeat(9)
+  const unbroken = "x".repeat(500)
+  const maximum = "m".repeat(5000)
+
+  assert.equal(supportMessageError(normalSentence), null)
+  assert.ok(longProse.length > 500)
+  assert.equal(supportMessageError(longProse), null)
+  assert.equal(supportMessageError(unbroken), null)
+  assert.equal(supportMessageError(maximum), null)
+})
+
 test("failed submission retains the typed message and permits retry", () => {
   const typed = supportFormReducer(
     supportFormReducer(initialSupportFormState, { type: "OPEN" }),

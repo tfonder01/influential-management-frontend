@@ -35,11 +35,35 @@ test.describe("Influential Management STG critical paths", () => {
     await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible()
   })
 
-  test("authenticated support dialog validates a required message without sending email", async ({ page }) => {
+  test("authenticated support dialog contains long content without sending email", async ({ page }) => {
     await login(page, ownerCredentials())
 
     const supportDialog = page.getByRole("dialog")
     const sidebarSupport = page.getByRole("button", { name: "Help & support", exact: true })
+    const message = page.getByLabel("Message", { exact: true })
+    const expectSupportContentContained = async () => {
+      const dimensions = await supportDialog.evaluate((dialog) => {
+        const textarea = dialog.querySelector("textarea")
+        const rect = dialog.getBoundingClientRect()
+        return {
+          dialogClientWidth: dialog.clientWidth,
+          dialogScrollWidth: dialog.scrollWidth,
+          left: rect.left,
+          right: rect.right,
+          textareaClientWidth: textarea?.clientWidth ?? 0,
+          textareaScrollWidth: textarea?.scrollWidth ?? 0,
+          viewportWidth: window.innerWidth,
+          pageClientWidth: document.documentElement.clientWidth,
+          pageScrollWidth: document.documentElement.scrollWidth,
+        }
+      })
+      expect(dimensions.dialogScrollWidth).toBeLessThanOrEqual(dimensions.dialogClientWidth + 1)
+      expect(dimensions.textareaScrollWidth).toBeLessThanOrEqual(dimensions.textareaClientWidth + 1)
+      expect(dimensions.pageScrollWidth).toBeLessThanOrEqual(dimensions.pageClientWidth + 1)
+      expect(dimensions.left).toBeGreaterThanOrEqual(0)
+      expect(dimensions.right).toBeLessThanOrEqual(dimensions.viewportWidth)
+    }
+
     await sidebarSupport.click()
     await expect(supportDialog).toBeVisible()
     await expect(supportDialog).toHaveCount(1)
@@ -53,19 +77,41 @@ test.describe("Influential Management STG critical paths", () => {
     await expect(page.getByRole("heading", { name: "Help & support", exact: true })).toBeVisible()
 
     await page.getByRole("button", { name: "Send to support", exact: true }).click()
-    await expect(page.getByRole("alert")).toHaveText("Tell us how we can help.")
+    await expect(supportDialog.getByRole("alert")).toHaveText("Tell us how we can help.")
+
+    await message.fill("The save button did not respond after I updated the maintenance request.")
+    await expectSupportContentContained()
+    await message.fill("The portal should keep this normal prose wrapped within the support dialog. ".repeat(9))
+    await expect(message).toHaveValue(/The portal should keep/)
+    await expectSupportContentContained()
+    await message.fill("x".repeat(500))
+    await expect(page.getByText("500/5000", { exact: true })).toBeVisible()
+    await expectSupportContentContained()
+    await message.fill("m".repeat(5000))
+    await expect(page.getByText("5000/5000", { exact: true })).toBeVisible()
+    await expectSupportContentContained()
 
     const featureOption = page.getByRole("radio", { name: /Suggest a feature/ })
     await featureOption.check()
     await expect(featureOption).toBeChecked()
     await expect(page.getByPlaceholder("What would you like the portal to help you do?")).toBeVisible()
+    const problemOption = page.getByRole("radio", { name: /Report a problem/ })
+    await problemOption.check()
+    await expect(problemOption).toBeChecked()
+    await expect(page.getByRole("button", { name: "Send to support", exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeVisible()
 
     await page.getByRole("button", { name: "Cancel", exact: true }).click()
     await expect(supportDialog).toBeHidden()
 
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.getByRole("button", { name: "Toggle menu", exact: true }).click()
     await sidebarSupport.click()
     await expect(supportDialog).toBeVisible()
     await expect(supportDialog).toHaveCount(1)
+    await message.fill("z".repeat(500))
+    await expect(page.getByText("500/5000", { exact: true })).toBeVisible()
+    await expectSupportContentContained()
     await page.getByRole("button", { name: "Cancel", exact: true }).click()
     await expect(supportDialog).toBeHidden()
   })
