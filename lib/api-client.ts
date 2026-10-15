@@ -13,6 +13,15 @@ export interface ApiLocation {
 }
 
 export type ApiRole = "OWNER" | "DIRECTOR" | "ASSISTANT_DIRECTOR"
+export type OnboardingAudience = "OWNER" | "LOCATION_STAFF"
+export type OnboardingStatus = "NOT_STARTED" | "DISMISSED" | "COMPLETED"
+
+export interface OnboardingState {
+  tourAudience: OnboardingAudience
+  version: number
+  status: OnboardingStatus
+  promptRequired: boolean
+}
 
 export interface SessionUser {
   id: string
@@ -24,6 +33,7 @@ export interface SessionUser {
   role: ApiRole
   operationalEmailNotificationsEnabled: boolean
   locations: ApiLocation[]
+  onboarding: OnboardingState
 }
 
 interface AuthResponse {

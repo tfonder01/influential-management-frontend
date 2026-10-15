@@ -22,6 +22,14 @@ test("account menu and sidebar expose support actions without adding a route", (
   assert.match(sidebarSource, /aria-label="Help & support"/)
   assert.match(sidebarSource, /onOpenSupport\(\)/)
   assert.doesNotMatch(sidebarSource, /href="\/support"/)
+  assert.doesNotMatch(topbarSource, /!isDemoMode\s*&&\s*\(\s*<DropdownMenuItem onClick=\{onOpenSupport\}/)
+  assert.doesNotMatch(sidebarSource, /!isDemoMode\s*&&/)
+})
+
+test("demo support is a non-persistent manual walkthrough preview", () => {
+  assert.match(supportDialogSource, /isDemoMode \? \(/)
+  assert.match(supportDialogSource, /Preview walkthrough/)
+  assert.match(supportDialogSource, /queueMicrotask\(startManualTour\)/)
 })
 
 test("collapsed and mobile sidebar support behavior stays accessible", () => {

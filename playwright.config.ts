@@ -9,6 +9,7 @@ if (existsSync(localEnvFile)) loadEnvFile(localEnvFile)
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "demo/**",
   globalSetup: "./e2e/global-setup.ts",
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),

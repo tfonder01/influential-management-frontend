@@ -50,7 +50,7 @@ export function Sidebar({
   onOpenSupport: () => void
 }) {
   const pathname = usePathname()
-  const { role, currentUser, dashboardSummary, records, isDemoMode } = useApp()
+  const { role, currentUser, dashboardSummary, records } = useApp()
 
   const needsReviewCount = dashboardSummary?.needsReview.total ?? 0
   const navigation = resolveAppNavigation(pathname, records)
@@ -123,9 +123,9 @@ export function Sidebar({
               </li>
             )
           })}
-          {!isDemoMode && (
             <li>
               <button
+                data-tour="support-entry"
                 type="button"
                 onClick={() => {
                   onOpenSupport()
@@ -142,7 +142,6 @@ export function Sidebar({
                 {!collapsed && <span className="flex-1 text-left">Help &amp; support</span>}
               </button>
             </li>
-          )}
         </ul>
       </nav>
 

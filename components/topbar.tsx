@@ -24,6 +24,7 @@ import { NotificationBell } from "@/components/notification-bell"
 import { NewMaintenanceRequestModal } from "@/components/new-maintenance-request-modal"
 import { NewSupplyRequestModal } from "@/components/new-supply-request-modal"
 import { resolveAppNavigation } from "@/lib/app-navigation"
+import { tourTargetForHref } from "@/lib/onboarding"
 
 
 export function Topbar({
@@ -58,7 +59,7 @@ export function Topbar({
               <Menu className="h-5 w-5" />
             </button>
           )}
-          <h1 className="truncate text-base font-semibold text-foreground">{navigation.title}</h1>
+          <h1 data-tour={tourTargetForHref(navigation.activeHref)} className="truncate text-base font-semibold text-foreground">{navigation.title}</h1>
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
@@ -151,12 +152,10 @@ export function Topbar({
                 </DropdownMenuLabel>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              {!isDemoMode && (
-                <DropdownMenuItem onClick={onOpenSupport}>
-                  <CircleHelp />
-                  Help &amp; support
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem onClick={onOpenSupport}>
+                <CircleHelp />
+                Help &amp; support
+              </DropdownMenuItem>
               <DropdownMenuLinkItem render={<Link href="/settings" />}>Settings</DropdownMenuLinkItem>
               {!isDemoMode && <DropdownMenuItem onClick={() => void logout()}>Sign out</DropdownMenuItem>}
             </DropdownMenuContent>

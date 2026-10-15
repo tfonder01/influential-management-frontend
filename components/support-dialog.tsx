@@ -1,7 +1,7 @@
 "use client"
 
 import { forwardRef, useImperativeHandle, useReducer } from "react"
-import { CheckCircle2, Lightbulb, Loader2, MessageCircleWarning } from "lucide-react"
+import { CheckCircle2, Lightbulb, Loader2, Map, MessageCircleWarning } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { ApiClientError } from "@/lib/api-client"
 import {
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { useOnboarding } from "@/components/onboarding-provider"
 
 export interface SupportDialogHandle {
   open: () => void
@@ -53,7 +54,8 @@ const TYPE_OPTIONS: Array<{
 export const SupportDialog = forwardRef<SupportDialogHandle>(function SupportDialog(_, ref) {
   const [state, dispatch] = useReducer(supportFormReducer, initialSupportFormState)
   const pathname = usePathname()
-  const { locations } = useApp()
+  const { locations, isDemoMode } = useApp()
+  const { startManualTour } = useOnboarding()
 
   useImperativeHandle(ref, () => ({ open: () => dispatch({ type: "OPEN" }) }), [])
 
@@ -89,11 +91,37 @@ export const SupportDialog = forwardRef<SupportDialogHandle>(function SupportDia
   }
 
   const selectedType = TYPE_OPTIONS.find((option) => option.value === state.type)!
+  const previewTour = () => {
+    close()
+    queueMicrotask(startManualTour)
+  }
 
   return (
     <Dialog open={state.open} onOpenChange={(open) => open ? dispatch({ type: "OPEN" }) : close()}>
       <DialogContent className="min-w-0 max-h-[calc(100dvh-1rem)] max-w-[calc(100%-1rem)] overflow-y-auto sm:max-w-lg">
-        {state.status === "success" ? (
+        {isDemoMode ? (
+          <div className="min-w-0 py-2">
+            <DialogHeader>
+              <DialogTitle>Help &amp; support</DialogTitle>
+              <DialogDescription>
+                Demo mode does not send support requests or save walkthrough progress.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-5 rounded-xl border border-border bg-muted/30 p-4">
+              <div className="flex items-start gap-3">
+                <Map className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+                <div>
+                  <h3 className="text-sm font-semibold">Preview the product walkthrough</h3>
+                  <p className="mt-1 text-sm leading-5 text-muted-foreground">Launch the tour for the currently selected demo role. Completing or skipping it will not be saved.</p>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="mt-6">
+              <Button type="button" variant="outline" onClick={close}>Close</Button>
+              <Button type="button" onClick={previewTour}>Preview walkthrough</Button>
+            </DialogFooter>
+          </div>
+        ) : state.status === "success" ? (
           <div className="min-w-0 py-3 text-center sm:py-5">
             <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
               <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
@@ -112,6 +140,14 @@ export const SupportDialog = forwardRef<SupportDialogHandle>(function SupportDia
                 Report a portal problem or share an idea with SentryPoint support.
               </DialogDescription>
             </DialogHeader>
+
+            <div className="mt-5 flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border bg-muted/25 p-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Product walkthrough</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Replay the tour for your current role.</p>
+              </div>
+              <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={previewTour}>Restart</Button>
+            </div>
 
             <fieldset className="mt-5 min-w-0 max-w-full">
               <legend className="text-sm font-medium text-foreground">Type</legend>

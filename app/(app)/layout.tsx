@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { AuthGate } from "@/components/auth-gate"
 import { useAuth } from "@/lib/auth"
 import { SupportDialog, type SupportDialogHandle } from "@/components/support-dialog"
+import { OnboardingProvider, useOnboarding } from "@/components/onboarding-provider"
 
 const SIDEBAR_COLLAPSE_STORAGE_KEY = "im.sidebar.collapsed"
 
@@ -18,6 +19,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // sync the real preference from localStorage after mount.
   const [collapsed, setCollapsed] = useState(false)
   const supportDialogRef = useRef<SupportDialogHandle>(null)
+  const { activeTarget } = useOnboarding()
+  const tourNeedsSidebar = activeTarget === "support-entry"
 
   useEffect(() => {
     const stored = window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)
@@ -43,7 +46,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Mobile overlay */}
-      {sidebarOpen && (
+      {(sidebarOpen || tourNeedsSidebar) && (
         <button
           type="button"
           className="fixed inset-0 z-20 bg-black/40 lg:hidden"
@@ -57,12 +60,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
         id="mobile-sidebar"
         className={cn(
           "fixed inset-y-0 left-0 z-30 flex-shrink-0 transition-transform duration-200 lg:relative lg:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          sidebarOpen || tourNeedsSidebar ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
         <Sidebar
           onClose={() => setSidebarOpen(false)}
-          collapsed={isDesktop && collapsed}
+          collapsed={isDesktop && collapsed && !tourNeedsSidebar}
           onToggleCollapsed={toggleCollapsed}
           onOpenSupport={openSupport}
         />
@@ -88,7 +91,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGate>
       <AppProvider productionUser={user}>
-        <AppShell>{children}</AppShell>
+        <OnboardingProvider>
+          <AppShell>{children}</AppShell>
+        </OnboardingProvider>
       </AppProvider>
     </AuthGate>
   )
