@@ -15,6 +15,7 @@ import {
   expectUiAfterMutation,
   login,
   logout,
+  setOnboardingState,
   uniqueName,
   uploadFixtureName,
   workflowProgress,
@@ -23,16 +24,18 @@ import {
 test.describe("Influential Management STG critical paths", () => {
   test("anonymous root presents the branded sign-in entry", async ({ page }) => {
     await page.goto("/")
+    await expect(page).toHaveURL(/\/login(?:[?#]|$)/)
     await expect(page.getByRole("heading", { name: "Influential Management", exact: true })).toBeVisible()
     await expect(page.getByText("Operations & Compliance Portal", { exact: true })).toBeVisible()
-    await expect(page.getByRole("link", { name: "Sign In", exact: true })).toHaveAttribute("href", "/login")
-    await expect(page.getByRole("link", { name: "support@sentrypointsystems.com", exact: true })).toHaveAttribute(
+    await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Contact support", exact: true })).toHaveAttribute(
       "href",
       "mailto:support@sentrypointsystems.com"
     )
   })
 
-  test("Owner login survives refresh and logout protects the dashboard", async ({ page }) => {
+  test("Owner login survives refresh and logout protects the dashboard", async ({ page, request }) => {
+    await setOnboardingState(request, ownerCredentials(), "DISMISSED")
     await login(page, ownerCredentials())
 
     await page.reload()
@@ -45,7 +48,8 @@ test.describe("Influential Management STG critical paths", () => {
     await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible()
   })
 
-  test("authenticated support dialog contains long content without sending email", async ({ page }) => {
+  test("authenticated support dialog contains long content without sending email", async ({ page, request }) => {
+    await setOnboardingState(request, ownerCredentials(), "DISMISSED")
     await login(page, ownerCredentials())
 
     const supportDialog = page.getByRole("dialog")
@@ -102,11 +106,11 @@ test.describe("Influential Management STG critical paths", () => {
     await expectSupportContentContained()
 
     const featureOption = page.getByRole("radio", { name: /Suggest a feature/ })
-    await featureOption.check()
+    await supportDialog.locator("label").filter({ hasText: "Suggest a feature" }).click()
     await expect(featureOption).toBeChecked()
     await expect(page.getByPlaceholder("What would you like the portal to help you do?")).toBeVisible()
     const problemOption = page.getByRole("radio", { name: /Report a problem/ })
-    await problemOption.check()
+    await supportDialog.locator("label").filter({ hasText: "Report a problem" }).click()
     await expect(problemOption).toBeChecked()
     await expect(page.getByRole("button", { name: "Send to support", exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeVisible()
@@ -126,7 +130,7 @@ test.describe("Influential Management STG critical paths", () => {
     await expect(supportDialog).toBeHidden()
   })
 
-  test("Director sees assigned-location data and cannot open another location's request", async ({ browser }) => {
+  test("Director sees assigned-location data and cannot open another location's request", async ({ browser, request }) => {
     const owner = await browser.newPage()
     const director = await browser.newPage()
     const title = uniqueName("E2E restricted maintenance")
@@ -134,6 +138,8 @@ test.describe("Influential Management STG critical paths", () => {
     let requestPath: string | undefined
 
     try {
+      await setOnboardingState(request, ownerCredentials(), "DISMISSED")
+      await setOnboardingState(request, directorCredentials(), "DISMISSED")
       await login(owner, ownerCredentials())
       requestPath = await createMaintenanceRequest(owner, title, restrictedLocationName)
       const requestId = requestPath.split("/").at(-1)
@@ -162,12 +168,14 @@ test.describe("Influential Management STG critical paths", () => {
     }
   })
 
-  test("Maintenance request is approved, completed, archived, and restored", async ({ page }) => {
+  test("Maintenance request is approved, completed, archived, and restored", async ({ page, request }) => {
     const title = uniqueName("E2E maintenance")
     let requestPath: string | undefined
     let workflowCompleted = false
 
     try {
+      await setOnboardingState(request, ownerCredentials(), "DISMISSED")
+      await setOnboardingState(request, directorCredentials(), "DISMISSED")
       await login(page, directorCredentials())
       requestPath = await createMaintenanceRequest(page, title)
       await expect(page.getByText("Awaiting Approval", { exact: true }).first()).toBeVisible()
@@ -247,12 +255,14 @@ test.describe("Influential Management STG critical paths", () => {
     }
   })
 
-  test("Supply request is approved, ordered, received, and archived for cleanup", async ({ page }) => {
+  test("Supply request is approved, ordered, received, and archived for cleanup", async ({ page, request }) => {
     const title = uniqueName("E2E supply")
     let requestPath: string | undefined
     let workflowCompleted = false
 
     try {
+      await setOnboardingState(request, ownerCredentials(), "DISMISSED")
+      await setOnboardingState(request, directorCredentials(), "DISMISSED")
       await login(page, directorCredentials())
       requestPath = await createSupplyRequest(page, title)
       await expect(page.getByText("Awaiting Approval", { exact: true }).first()).toBeVisible()
@@ -310,13 +320,14 @@ test.describe("Influential Management STG critical paths", () => {
     }
   })
 
-  test("Compliance record renders, downloads its private file, archives, and restores", async ({ page }) => {
+  test("Compliance record renders, downloads its private file, archives, and restores", async ({ page, request }) => {
     const title = uniqueName("E2E compliance")
     const { directorLocationName } = locationFixtures()
     let recordPath: string | undefined
     let workflowCompleted = false
 
     try {
+      await setOnboardingState(request, ownerCredentials(), "DISMISSED")
       await login(page, ownerCredentials())
       recordPath = await createComplianceRecord(page, title, directorLocationName)
       await expect(page.getByText("Staff Complaints", { exact: true }).first()).toBeVisible()

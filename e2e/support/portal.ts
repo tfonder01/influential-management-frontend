@@ -1,6 +1,13 @@
-import { expect, type Locator, type Page, type Request, type Response } from "@playwright/test"
+import {
+  expect,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+  type Request,
+  type Response,
+} from "@playwright/test"
 import { randomUUID } from "node:crypto"
-import type { TestCredentials } from "./env"
+import { stagingBackendUrl, type TestCredentials } from "./env"
 
 export const uploadFixturePath = "e2e/fixtures/staging-upload.pdf"
 export const uploadFixtureName = "staging-upload.pdf"
@@ -10,7 +17,10 @@ const STG_MUTATION_TIMEOUT_MS = 30_000
 const STG_MUTATION_UI_TIMEOUT_MS = 20_000
 const STG_UPLOAD_TIMEOUT_MS = 45_000
 
-interface ApiWaitOptions {
+export type OnboardingStatus = "NOT_STARTED" | "DISMISSED" | "COMPLETED"
+export type LoginDestination = "dashboard" | "onboarding-welcome"
+
+export interface ApiWaitOptions {
   label: string
   method: string
   path: string
@@ -21,7 +31,7 @@ function matchesApiRequest(request: Request, options: ApiWaitOptions): boolean {
   return request.method() === options.method && new URL(request.url()).pathname === options.path
 }
 
-async function waitForSuccessfulApiResponse(
+export async function waitForSuccessfulApiResponse(
   page: Page,
   options: ApiWaitOptions
 ): Promise<Response> {
@@ -198,7 +208,44 @@ export function uniqueName(prefix: string): string {
   return `${prefix} ${Date.now()}-${randomUUID().slice(0, 8)}`
 }
 
-export async function login(page: Page, credentials: TestCredentials): Promise<void> {
+export async function setOnboardingState(
+  apiRequest: APIRequestContext,
+  credentials: TestCredentials,
+  status: OnboardingStatus
+): Promise<OnboardingStatus> {
+  const authResponse = await apiRequest.post(`${stagingBackendUrl()}/api/auth/login`, {
+    data: credentials,
+  })
+  if (!authResponse.ok()) {
+    throw new Error(`Prepare onboarding state: login returned HTTP ${authResponse.status()}.`)
+  }
+
+  const session = await authResponse.json() as {
+    accessToken: string
+    user: {
+      role: "OWNER" | "DIRECTOR" | "ASSISTANT_DIRECTOR"
+      onboarding: { status: OnboardingStatus }
+    }
+  }
+  const response = await apiRequest.patch(`${stagingBackendUrl()}/api/users/me/onboarding`, {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    data: {
+      tourAudience: session.user.role === "OWNER" ? "OWNER" : "LOCATION_STAFF",
+      version: 1,
+      status,
+    },
+  })
+  if (!response.ok()) {
+    throw new Error(`Prepare onboarding state: update returned HTTP ${response.status()}.`)
+  }
+  return session.user.onboarding.status
+}
+
+export async function login(
+  page: Page,
+  credentials: TestCredentials,
+  destination: LoginDestination = "dashboard"
+): Promise<void> {
   await page.goto("/login")
   await page.getByLabel("Email").fill(credentials.email)
   await page.getByLabel("Password", { exact: true }).fill(credentials.password)
@@ -224,13 +271,31 @@ export async function login(page: Page, credentials: TestCredentials): Promise<v
     )
   }
 
+  const welcome = page.getByRole("dialog", { name: "Welcome to Influential Management" })
+  const destinationReady = destination === "onboarding-welcome"
+    ? expect(welcome).toBeVisible({ timeout: AUTH_TRANSITION_TIMEOUT_MS })
+    : Promise.all([
+        expect(page.getByRole("heading", { name: "Dashboard", exact: true }).first())
+          .toBeVisible({ timeout: AUTH_TRANSITION_TIMEOUT_MS }),
+        expect(welcome).toBeHidden({ timeout: AUTH_TRANSITION_TIMEOUT_MS }),
+      ])
+
   await Promise.all([
     expect(page).toHaveURL(/\/dashboard(?:[/?#]|$)/, { timeout: AUTH_TRANSITION_TIMEOUT_MS }),
-    expect(page.getByRole("heading", { name: "Dashboard", exact: true }).first())
-      .toBeVisible({ timeout: AUTH_TRANSITION_TIMEOUT_MS }),
-  ]).catch((cause: unknown) => {
+    destinationReady,
+  ]).catch(async (cause: unknown) => {
+    const state = {
+      url: page.url(),
+      welcomeVisible: await welcome.isVisible().catch(() => false),
+      dashboardHeadingVisible: await page
+        .getByRole("heading", { name: "Dashboard", exact: true })
+        .first()
+        .isVisible()
+        .catch(() => false),
+    }
     throw new Error(
-      "Login API returned success, but the dashboard URL and heading did not become ready within 30s.",
+      `Login API returned success, but the expected ${destination} state did not become ready. `
+        + `Browser state: ${JSON.stringify(state)}.`,
       { cause }
     )
   })

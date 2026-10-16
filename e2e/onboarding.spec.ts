@@ -1,8 +1,11 @@
 import { expect, test } from "@playwright/test"
-import { ownerCredentials, stagingBackendUrl } from "./support/env"
-import { clickAndWaitForApi, login } from "./support/portal"
-
-type OnboardingStatus = "NOT_STARTED" | "DISMISSED" | "COMPLETED"
+import { ownerCredentials } from "./support/env"
+import {
+  clickAndWaitForApi,
+  login,
+  setOnboardingState,
+  waitForSuccessfulApiResponse,
+} from "./support/portal"
 
 const viewportSizes = [
   { width: 1920, height: 1080 },
@@ -15,7 +18,7 @@ const viewportSizes = [
 async function expectTooltipInsideViewport(page: import("@playwright/test").Page) {
   const tooltip = page.locator("[data-tour-tooltip]")
   await expect(tooltip).toBeVisible()
-  const bounds = await tooltip.evaluate((element) => {
+  const readBounds = () => tooltip.evaluate((element) => {
     const rect = element.getBoundingClientRect()
     return {
       top: rect.top,
@@ -27,6 +30,14 @@ async function expectTooltipInsideViewport(page: import("@playwright/test").Page
     }
   })
   const margin = 15
+  await expect.poll(async () => {
+    const bounds = await readBounds()
+    return bounds.top >= margin
+      && bounds.left >= margin
+      && bounds.right <= bounds.viewportWidth - margin
+      && bounds.bottom <= bounds.viewportHeight - margin
+  }).toBe(true)
+  const bounds = await readBounds()
   expect(bounds.top).toBeGreaterThanOrEqual(margin)
   expect(bounds.left).toBeGreaterThanOrEqual(margin)
   expect(bounds.right).toBeLessThanOrEqual(bounds.viewportWidth - margin)
@@ -35,26 +46,10 @@ async function expectTooltipInsideViewport(page: import("@playwright/test").Page
 
 test("Owner receives v1 once, can complete it, and can manually replay it", async ({ page, request }) => {
   const credentials = ownerCredentials()
-  const authResponse = await request.post(`${stagingBackendUrl()}/api/auth/login`, {
-    data: credentials,
-  })
-  expect(authResponse.ok()).toBe(true)
-  const session = await authResponse.json() as {
-    accessToken: string
-    user: { onboarding: { status: OnboardingStatus } }
-  }
-  const originalStatus = session.user.onboarding.status
-  const updateState = async (status: OnboardingStatus) => {
-    const response = await request.patch(`${stagingBackendUrl()}/api/users/me/onboarding`, {
-      headers: { Authorization: `Bearer ${session.accessToken}` },
-      data: { tourAudience: "OWNER", version: 1, status },
-    })
-    expect(response.ok()).toBe(true)
-  }
+  const originalStatus = await setOnboardingState(request, credentials, "NOT_STARTED")
 
   try {
-    await updateState("NOT_STARTED")
-    await login(page, credentials)
+    await login(page, credentials, "onboarding-welcome")
 
     const welcome = page.getByRole("dialog", { name: "Welcome to Influential Management" })
     await expect(welcome).toBeVisible()
@@ -80,11 +75,18 @@ test("Owner receives v1 once, can complete it, and can manually replay it", asyn
       }
     }
 
+    const refreshPromise = waitForSuccessfulApiResponse(page, {
+      label: "Refresh session after completing onboarding",
+      method: "POST",
+      path: "/api/auth/refresh",
+    })
+    void refreshPromise.catch(() => undefined)
     await clickAndWaitForApi(
       page,
       page.locator('[data-tour-tooltip] [data-action="primary"]'),
       { label: "Complete onboarding", method: "PATCH", path: "/api/users/me/onboarding" }
     )
+    await refreshPromise
     await page.reload()
     await expect(welcome).toHaveCount(0)
 
@@ -98,6 +100,6 @@ test("Owner receives v1 once, can complete it, and can manually replay it", asyn
       { label: "Dismiss replayed onboarding", method: "PATCH", path: "/api/users/me/onboarding" }
     )
   } finally {
-    await updateState(originalStatus)
+    await setOnboardingState(request, credentials, originalStatus)
   }
 })
