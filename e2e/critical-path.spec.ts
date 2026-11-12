@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { withSelectOptions } from "./support/select"
 import {
   directorCredentials,
   locationFixtures,
@@ -148,8 +149,12 @@ test.describe("Influential Management STG critical paths", () => {
       await login(director, directorCredentials())
       await director.goto("/maintenance")
       const locationFilter = director.getByLabel("Filter by location")
-      await expect(locationFilter.locator("option", { hasText: directorLocationName })).toHaveCount(1)
-      await expect(locationFilter.locator("option", { hasText: restrictedLocationName })).toHaveCount(0)
+      await withSelectOptions(locationFilter, async (popup) => {
+        const assignedLocation = popup.getByRole("option", { name: directorLocationName, exact: true })
+        await expect(assignedLocation).toBeVisible()
+        await expect(assignedLocation).toBeEnabled()
+        await expect(popup.getByRole("option", { name: restrictedLocationName, exact: true })).toHaveCount(0)
+      })
       await expect(director.getByText(title, { exact: true })).toHaveCount(0)
 
       const detailResponse = director.waitForResponse(

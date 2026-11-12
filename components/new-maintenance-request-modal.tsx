@@ -46,15 +46,17 @@ export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boole
 
   const isOwner = role === "owner"
   const effectiveApprovalRequired = isOwner ? approvalRequired : true
+  const initialLocationId = isOwner ? (locations[0]?.id ?? "") : (currentUser.locationId ?? "")
 
   useEffect(() => {
     if (!open) return
-    setLocationId(role === "owner" ? (locations[0]?.id ?? "") : (currentUser.locationId ?? ""))
+    setLocationId(initialLocationId)
     setArea(""); setClassroomAgeGroup(undefined)
     setDateReported(new Date().toISOString().slice(0, 10))
     setSubmitError("")
     setSubmitting(false)
-  }, [open, role, locations, currentUser.locationId])
+    // Unrelated app-store refreshes rebuild locations; they must not reset an open form.
+  }, [open, role, initialLocationId])
 
   const reset = () => {
     setArea(""); setClassroomAgeGroup(undefined)

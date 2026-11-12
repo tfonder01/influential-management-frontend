@@ -338,18 +338,39 @@ export async function createMaintenanceRequest(
   areaName = "Kitchen"
 ): Promise<string> {
   await page.goto("/maintenance")
+  // Finish initial records/supply/summary loading before filling the modal.
+  // Each select's committed value is checked separately below.
+  await page.waitForLoadState("networkidle")
+  await expect(page.getByText("Loading maintenance requests…", { exact: true })).toBeHidden()
+  await dismissVisibleNotification(page)
   await page.getByRole("button", { name: "New Maintenance Request" }).click()
   const dialog = page.getByRole("dialog", { name: "New Maintenance Request" })
-  if (locationName) {
-    await dialog.getByLabel("Location").click()
-    await page.getByRole("option", { name: locationName, exact: true }).click()
-  }
-  await selectMaintenanceArea(page, areaName)
-  await dialog.getByLabel("Maintenance Category").click()
-  await page.getByRole("option", { name: "Building / Facility", exact: true }).click()
+  const location = dialog.getByLabel("Location", { exact: true })
+  const category = dialog.getByLabel("Maintenance Category", { exact: true })
+  const area = dialog.getByLabel("Classroom / Area", { exact: true })
+  const description = `Disposable STG E2E maintenance request for ${title}`
   await dialog.getByLabel("Issue / Request Title").fill(title)
-  await dialog.getByLabel("Description").fill(`Disposable STG E2E maintenance request for ${title}`)
-  await clickAndWaitForApi(page, dialog.getByRole("button", { name: "Submit Request" }), {
+  await dialog.getByLabel("Description", { exact: true }).fill(description)
+  if (locationName) {
+    await selectPopupOption(location, locationName)
+  }
+  await selectPopupOption(category, "Building / Facility")
+  await selectMaintenanceArea(page, areaName)
+
+  await expect(location).toBeVisible()
+  await expect(location).toContainText(locationName ?? /\S/)
+  await expect(location).not.toContainText("Select location")
+  await expect(area).toContainText(areaName)
+  await expect(category).toContainText("Building / Facility")
+  await expect(dialog.getByLabel("Priority", { exact: true })).toContainText("Normal")
+  await expect(dialog.getByLabel("Issue / Request Title")).toHaveValue(title)
+  await expect(dialog.getByLabel("Description", { exact: true })).toHaveValue(description)
+  await expect(dialog.getByLabel("Date Reported")).not.toHaveValue("")
+  await expect(page.getByRole("listbox")).toHaveCount(0)
+  await expect(page.getByRole("menu")).toHaveCount(0)
+  const submit = dialog.getByRole("button", { name: "Submit Request", exact: true })
+  await expect(submit).toBeEnabled()
+  await clickAndWaitForApi(page, submit, {
     label: "Create maintenance request",
     method: "POST",
     path: "/api/maintenance",
