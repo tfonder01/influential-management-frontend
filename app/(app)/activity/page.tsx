@@ -1,5 +1,6 @@
 "use client"
 
+import { StandardSelect } from "@/components/ui/standard-select"
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import {
@@ -179,18 +180,8 @@ function ProductionActivityFeed() {
         {role === "owner" && locations.length > 1 && (
           <div className="flex items-center gap-1.5">
             <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-            <select
-              value={locationFilter}
-              onChange={(e) => setLocationFilter(e.target.value)}
-              className="rounded-md border border-border bg-card px-2 py-1.5 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="ALL">All Locations</option>
-              {locations.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.name}
-                </option>
-              ))}
-            </select>
+            <StandardSelect id="activity-location-filter" value={locationFilter} aria-label="Filter by location" onValueChange={(value) => setLocationFilter(value)}
+              options={[{ value: "ALL", label: "All Locations" }, ...locations.map((location) => ({ value: location.id, label: location.name }))]} />
           </div>
         )}
       </div>

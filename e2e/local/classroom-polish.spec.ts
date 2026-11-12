@@ -1,65 +1,6 @@
+import { selectPopupOption } from "../support/select"
 import { expect, test, type Page } from "@playwright/test"
-import type { AdminUser } from "../../lib/user-admin-api"
-const locations = ["one", "two"].map((id) => ({ id, name: `Location ${id}`, addressLine1: "", city: "", state: "", postalCode: "", active: true }))
-const user = (id: string, status: AdminUser["status"]): AdminUser => ({ id, status, displayName: `User ${id}`, email: `${id}@example.test`,
-  role: "DIRECTOR", locations: [{ id: "one", name: "Location one" }], createdAt: "2026-01-01" })
-
-async function fixtures(page: Page) {
-  const state = { users: [user("active", "ACTIVE"), user("invited", "INVITED"), user("disabled", "DISABLED")],
-    record: { id: "history", requestNumber: 12, title: "Historical request", locationId: "one", locationName: "Location one", category: "BUILDING_FACILITY", priority: "LOW", status: "SUBMITTED",
-      approvalStatus: "NOT_REQUIRED", archived: false, attachments: [], commentCount: 0, area: "Other", classroomAgeGroup: "INFANT",
-      description: "Historical fixture", createdAt: "2026-01-01", updatedAt: "2026-01-01", submittedByUserId: "owner", submittedByName: "Test Owner" } as Record<string, unknown>,
-    showHistory: false,
-    userRequests: [] as URL[], payloads: [] as Record<string, unknown>[], slowStatus: "", classroomRequests: [] as string[] }
-  await page.route("**/api/**", async (route) => {
-    const request = route.request(), url = new URL(request.url()), path = url.pathname
-    if (request.method() === "OPTIONS") { await route.fulfill({ status: 204 }); return }
-    let body: unknown = { content: [], totalElements: 0, totalPages: 0, number: 0 }
-    let status = 200
-    if (path === "/api/auth/refresh") body = { accessToken: "local-fixture-token", expiresInSeconds: 900, tokenType: "Bearer", user: {
-      id: "owner", organizationId: "org", organizationName: "Test organization", firstName: "Test", lastName: "Owner", email: "owner@example.test",
-      role: "OWNER", operationalEmailNotificationsEnabled: true, locations,
-      onboarding: { tourAudience: "OWNER", version: 1, status: "DISMISSED", promptRequired: false },
-    } }
-    else if (path === "/api/dashboard/summary") body = { month: "2026-11", generatedAt: "2026-11-11", needsReview: { total: 0, records: 0, maintenance: 0, supply: 0 },
-      records: { active: 0, newCount: 0, needsAttention: 0, reviewed: 0, compliance: 0, operations: 0 },
-      maintenance: { open: 0, awaitingApproval: 0, inProgress: 0, completedThisMonth: 0, costThisMonth: 0 },
-      supply: { open: 0, awaitingApproval: 0, orderedOrInTransit: 0, receivedThisMonth: 0, spendThisMonth: 0 }, operationalRequests: [] }
-    else if (path === "/api/admin/settings/organization") body = { id: "org", name: "Test organization", updatedAt: "2026-01-01" }
-    else if (path === "/api/admin/settings/locations") body = locations
-    else if (path.includes("/classrooms")) { state.classroomRequests.push(path); status = 500
-    } else if (path === "/api/admin/users/invite") {
-      const input = request.postDataJSON(), invited = { ...user("new-invite", "INVITED"), displayName: input.name, email: input.email }
-      state.users.push(invited); body = { user: invited, expiresAt: "2026-12-01" }
-    } else if (/\/api\/admin\/users\/[^/]+\/(disable|reactivate)$/.test(path)) {
-      const item = state.users.find((user) => user.id === path.split("/").at(-2))!
-      item.status = path.endsWith("/disable") ? "DISABLED" : "ACTIVE"; body = item
-    } else if (path === "/api/admin/users") {
-      state.userRequests.push(url)
-      const statuses = url.searchParams.getAll("status"), index = Number(url.searchParams.get("page") ?? 0), size = Number(url.searchParams.get("size") ?? 25)
-      const filtered = state.users.filter((user) => !statuses.length || statuses.includes(user.status))
-      body = { content: filtered.slice(index * size, (index + 1) * size), totalElements: filtered.length, totalPages: Math.ceil(filtered.length / size), number: index }
-      if (statuses.includes(state.slowStatus)) await new Promise((resolve) => setTimeout(resolve, 700))
-    } else if (path === "/api/maintenance" && request.method() === "GET" && state.showHistory) {
-      const items = url.searchParams.get("archived") === "true" ? [] : [state.record]
-      body = { content: items, totalElements: items.length, totalPages: items.length, number: 0 }
-    } else if (path === "/api/maintenance/history") {
-      if (request.method() === "PATCH") {
-        const input = request.postDataJSON(); state.payloads.push(input); Object.assign(state.record, input)
-        state.record.classroomAgeGroup = input.classroomAgeGroup ?? null
-      }
-      body = state.record
-    } else if (path.endsWith("/comments")) body = []
-    else if (path === "/api/maintenance" && request.method() === "POST") {
-      const input = request.postDataJSON(); state.payloads.push(input)
-      body = { ...input, id: "ticket", requestNumber: 1, status: "SUBMITTED", approvalStatus: "NOT_REQUIRED", archived: false,
-        attachments: [], area: input.area, createdAt: "2026-01-01", updatedAt: "2026-01-01" }
-    } else if (path.endsWith("/notifications/unread-count")) body = { count: 0 }
-    else if (path.endsWith("/assignable") || path.endsWith("/mentionable")) body = []
-    await route.fulfill({ status, json: body })
-  })
-  return state
-}
+import { fixtures, user } from "../support/polish-fixtures"
 async function openMaintenance(page: Page) {
   await page.goto("/maintenance")
   await page.getByRole("button", { name: "New Maintenance Request", exact: true }).click()
@@ -166,28 +107,28 @@ test("Users filters ignore stale responses and refresh lifecycle membership and 
     await page.setViewportSize({ width, height: 900 })
     await expect(filter).toBeVisible(); await insideViewport(page)
   }
-  await filter.selectOption("disabled"); await expect(page.locator("article")).toHaveCount(1)
+  await selectPopupOption(filter, "Disabled"); await expect(page.locator("article")).toHaveCount(1)
   await expect(page.getByText("User disabled", { exact: true })).toBeVisible()
-  await filter.selectOption("all"); await expect(page.locator("article")).toHaveCount(3)
+  await selectPopupOption(filter, "All Users"); await expect(page.locator("article")).toHaveCount(3)
   state.slowStatus = "DISABLED"
   const pending = page.waitForRequest((request) => new URL(request.url()).searchParams.getAll("status").includes("DISABLED"))
   const staleResponse = page.waitForResponse((response) => new URL(response.url()).searchParams.getAll("status").includes("DISABLED"))
-  await filter.selectOption("disabled"); await pending; await filter.selectOption("active")
+  await selectPopupOption(filter, "Disabled"); await pending; await selectPopupOption(filter, "Active")
   await expect(page.getByText("User active", { exact: true })).toBeVisible(); await staleResponse
   await expect(page.locator("article")).toHaveCount(1); await expect(page.getByText("User disabled", { exact: true })).toHaveCount(0)
   await page.getByRole("button", { name: "Disable", exact: true }).click()
   await page.getByRole("dialog").getByRole("button", { name: "Disable user", exact: true }).click()
   await expect(page.getByText("No active users found", { exact: true })).toBeVisible()
-  state.slowStatus = ""; await filter.selectOption("disabled"); await expect(page.locator("article")).toHaveCount(2)
+  state.slowStatus = ""; await selectPopupOption(filter, "Disabled"); await expect(page.locator("article")).toHaveCount(2)
   const row = page.locator("article").filter({ hasText: "User active" })
   await row.getByRole("button", { name: "Reactivate", exact: true }).click()
   await page.getByRole("dialog").getByRole("button", { name: "Reactivate user", exact: true }).click()
   await expect(page.locator("article")).toHaveCount(1)
-  await filter.selectOption("current"); await expect(page.locator("article")).toHaveCount(2)
+  await selectPopupOption(filter, "Active & Invited"); await expect(page.locator("article")).toHaveCount(2)
   await page.getByRole("button", { name: "Invite user", exact: true }).click()
   const invite = page.getByRole("dialog", { name: "Invite user" })
   await invite.getByLabel("Full name").fill("New Invite"); await invite.getByLabel("Email", { exact: true }).fill("new@example.test")
-  await invite.getByRole("combobox").selectOption("OWNER")
+  await selectPopupOption(invite.getByRole("combobox"), "Owner")
   await invite.getByRole("button", { name: "Send invitation" }).click()
   await expect(page.getByRole("dialog", { name: "Invitation ready" })).toBeVisible()
   await page.getByRole("button", { name: "Done", exact: true }).click()
@@ -202,10 +143,10 @@ test("Users resets page on filter and recovers a removed last page", async ({ pa
   await page.getByRole("dialog").getByRole("button", { name: "Disable user", exact: true }).click()
   await expect(page.locator("article")).toHaveCount(25)
   expect(state.userRequests.at(-1)!.searchParams.get("page")).toBe("0")
-  await page.getByLabel("Status", { exact: true }).selectOption("all")
+  await selectPopupOption(page.getByLabel("Status", { exact: true }), "All Users")
   await page.getByRole("button", { name: "Next", exact: true }).click()
   await expect(page.getByText("Page 2 of 2", { exact: true })).toBeVisible()
-  await page.getByLabel("Status", { exact: true }).selectOption("disabled")
+  await selectPopupOption(page.getByLabel("Status", { exact: true }), "Disabled")
   await expect(page.locator("article")).toHaveCount(1)
   expect(state.userRequests.at(-1)!.searchParams.get("page")).toBe("0")
 })

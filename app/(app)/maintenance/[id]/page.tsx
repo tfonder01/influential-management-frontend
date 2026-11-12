@@ -1,5 +1,6 @@
 "use client"
 
+import { StandardSelect } from "@/components/ui/standard-select"
 import { use, useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -83,7 +84,6 @@ import {
 } from "@/lib/maintenance-api"
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
-const fieldClass = "h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
 const LEGACY_ASSIGNEE = "__legacy_assignee__"
 
 function normalizeText(value: string | null | undefined) {
@@ -958,11 +958,8 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
             <div className="mt-4 space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="assigned-user">Assigned To <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                <select id="assigned-user" className={fieldClass} value={assignedUserId} onChange={(event) => setAssignedUserId(event.target.value)} disabled={!canEdit || savingDetails || assignableUsersLoading}>
-                  <option value="">{assignableUsersLoading ? "Loading users..." : "Not assigned"}</option>
-                  {assignedUserId === LEGACY_ASSIGNEE && request.assignedTo && <option value={LEGACY_ASSIGNEE} disabled>{request.assignedTo} (legacy assignment)</option>}
-                  {assignableUsers.map((user) => <option key={user.id} value={user.id}>{user.displayName} &mdash; {roleLabel(user.role.toLowerCase() as Role)}</option>)}
-                </select>
+                <StandardSelect id="assigned-user" value={assignedUserId} disabled={!canEdit || savingDetails || assignableUsersLoading} onValueChange={(value) => setAssignedUserId(value)}
+                  options={[{ value: "", label: assignableUsersLoading ? "Loading users..." : "Not assigned" }, ...(assignedUserId === LEGACY_ASSIGNEE && request.assignedTo ? [{ value: LEGACY_ASSIGNEE, label: `${request.assignedTo} (legacy assignment)`, disabled: true }] : []), ...assignableUsers.map((user) => ({ value: user.id, label: `${user.displayName} — ${roleLabel(user.role.toLowerCase() as Role)}` }))]} />
                 <p className="text-[11px] text-muted-foreground">Assign a portal user responsible for coordinating this request.</p>
                 {assignableUsersError && <p className="text-xs text-destructive">{assignableUsersError}</p>}
               </div>
@@ -1157,17 +1154,15 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
                 value={{ area: editArea, classroomAgeGroup: editClassroomType }} onChange={(selection) => { setEditArea(selection.area); setEditClassroomType(selection.classroomAgeGroup) }} disabled={editSaving} />
               <div className="space-y-1.5">
                 <Label htmlFor="edit-category">Category</Label>
-                <select id="edit-category" className={fieldClass} value={editCategory} onChange={(event) => setEditCategory(event.target.value as MaintenanceCategory)} disabled={editSaving}>
-                  {MAINTENANCE_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
+                <StandardSelect id="edit-category" value={editCategory} disabled={editSaving} onValueChange={(value) => setEditCategory(value as MaintenanceCategory)}
+                  options={MAINTENANCE_CATEGORIES.map((item) => ({ value: item, label: item }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="edit-priority">Priority</Label>
-                <select id="edit-priority" className={fieldClass} value={editPriority} onChange={(event) => setEditPriority(event.target.value as MaintenancePriority)} disabled={editSaving}>
-                  {(["Low", "Medium", "High", "Urgent"] as MaintenancePriority[]).map((item) => <option key={item} value={item}>{priorityLabel(item)}</option>)}
-                </select>
+                <StandardSelect id="edit-priority" value={editPriority} disabled={editSaving} onValueChange={(value) => setEditPriority(value as MaintenancePriority)}
+                  options={(["Low", "Medium", "High", "Urgent"] as MaintenancePriority[]).map((item) => ({ value: item, label: priorityLabel(item) }))} />
               </div>
               <div className="space-y-1.5"><Label htmlFor="edit-estimated-cost">Estimated cost</Label><Input id="edit-estimated-cost" type="number" min="0" step="0.01" value={editEstimatedCost} onChange={(event) => setEditEstimatedCost(event.target.value)} disabled={editSaving} /></div>
             </div>

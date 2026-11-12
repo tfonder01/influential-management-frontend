@@ -1,5 +1,7 @@
 "use client"
 
+import { ClassroomAreaSelect } from "@/components/classroom-area-select"
+import { StandardSelect } from "@/components/ui/standard-select"
 import { use, useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -31,8 +33,8 @@ import {
   XCircle,
 } from "lucide-react"
 import { useApp } from "@/lib/store"
-import { SUPPLY_AREAS, SUPPLY_CATEGORIES } from "@/lib/mock-data"
-import type { Comment, SupplyAttachment, SupplyCategory, SupplyPriority, SupplyStatus } from "@/lib/types"
+import { SUPPLY_CATEGORIES } from "@/lib/mock-data"
+import type { ClassroomAgeGroup, Comment, SupplyAttachment, SupplyCategory, SupplyPriority, SupplyStatus } from "@/lib/types"
 import { priorityLabel } from "@/lib/priority-labels"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -75,7 +77,6 @@ import {
 } from "@/lib/supply-api"
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
-const fieldClass = "h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
 const progressSteps = ["Submitted", "Approved / Ready", "Ordered", "Received"] as const
 
 function normalizeText(value: string | null | undefined) {
@@ -189,6 +190,8 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
   const [editTitle, setEditTitle] = useState("")
   const [editDescription, setEditDescription] = useState("")
   const [editArea, setEditArea] = useState("")
+  const [editClassroomAgeGroup, setEditClassroomAgeGroup] = useState<ClassroomAgeGroup | undefined>()
+  const [editAreaValid, setEditAreaValid] = useState(true)
   const [editCategory, setEditCategory] = useState<SupplyCategory | "">("")
   const [editQuantity, setEditQuantity] = useState("1")
   const [editPriority, setEditPriority] = useState<SupplyPriority>("Medium")
@@ -414,6 +417,8 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
     setEditTitle(request.title)
     setEditDescription(request.description ?? "")
     setEditArea(request.area ?? "")
+    setEditClassroomAgeGroup(request.classroomAgeGroup)
+    setEditAreaValid(true)
     setEditCategory(request.category)
     setEditQuantity(request.quantity.toString())
     setEditPriority(request.priority)
@@ -424,6 +429,7 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
 
   const saveRequestDetails = async () => {
     if (editSaving) return
+    if (!editAreaValid) { setEditError("Enter a custom area name or choose Not specified."); return }
     if (!editTitle.trim() || !editCategory || !editQuantity || Number(editQuantity) <= 0) {
       setEditError("Title, category, and a valid quantity are required.")
       return
@@ -434,8 +440,9 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
       updateSupplyRequest(id, {
         title: editTitle.trim(),
         itemName: editTitle.trim(),
+        classroomAgeGroup: editClassroomAgeGroup,
         description: editDescription.trim() || undefined,
-        area: editArea.trim() || undefined,
+        area: editArea === (request.area ?? "") ? request.area : editArea.trim() || undefined,
         category: editCategory as SupplyCategory,
         quantity: Number(editQuantity),
         priority: editPriority,
@@ -452,8 +459,8 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
         category: editCategory as SupplyCategory,
         quantity: Number(editQuantity),
         priority: editPriority,
-        classroomAgeGroup: request.classroomAgeGroup,
-        area: editArea.trim() || undefined,
+        classroomAgeGroup: editClassroomAgeGroup,
+        area: editArea === (request.area ?? "") ? request.area : editArea.trim() || undefined,
         vendorName: vendor || undefined,
         vendorContact: vendorContact || undefined,
         estimatedCost: editEstimatedCost ? Number(editEstimatedCost) : undefined,
@@ -1046,26 +1053,22 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
             <div className="space-y-1.5"><Label htmlFor="edit-title">Item / Title</Label><Input id="edit-title" value={editTitle} onChange={(event) => setEditTitle(event.target.value)} disabled={editSaving} /></div>
             <div className="space-y-1.5"><Label htmlFor="edit-description">Description</Label><Textarea id="edit-description" rows={3} value={editDescription} onChange={(event) => setEditDescription(event.target.value)} disabled={editSaving} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label htmlFor="edit-area">Classroom / Area</Label>
-                <select id="edit-area" className={fieldClass} value={editArea} onChange={(event) => setEditArea(event.target.value)} disabled={editSaving}>
-                  <option value="">Not specified</option>
-                  {SUPPLY_AREAS.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
-              </div>
+              <ClassroomAreaSelect key={editOpen ? `edit-${request.id}` : "closed"} id="edit-area"
+                value={{ area: editArea, classroomAgeGroup: editClassroomAgeGroup }} optional disabled={editSaving}
+                onChange={(selection) => { setEditArea(selection.area); setEditClassroomAgeGroup(selection.classroomAgeGroup) }}
+                onValidityChange={setEditAreaValid} />
               <div className="space-y-1.5">
                 <Label htmlFor="edit-category">Category</Label>
-                <select id="edit-category" className={fieldClass} value={editCategory} onChange={(event) => setEditCategory(event.target.value as SupplyCategory)} disabled={editSaving}>
-                  {SUPPLY_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
+                <StandardSelect id="edit-category" value={editCategory} disabled={editSaving} onValueChange={(value) => setEditCategory(value as SupplyCategory)}
+                  options={SUPPLY_CATEGORIES.map((item) => ({ value: item, label: item }))} />
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5"><Label htmlFor="edit-quantity">Quantity</Label><Input id="edit-quantity" type="number" min="1" step="1" value={editQuantity} onChange={(event) => setEditQuantity(event.target.value)} disabled={editSaving} /></div>
               <div className="space-y-1.5">
                 <Label htmlFor="edit-priority">Priority</Label>
-                <select id="edit-priority" className={fieldClass} value={editPriority} onChange={(event) => setEditPriority(event.target.value as SupplyPriority)} disabled={editSaving}>
-                  {(["Low", "Medium", "High", "Urgent"] as SupplyPriority[]).map((item) => <option key={item} value={item}>{priorityLabel(item)}</option>)}
-                </select>
+                <StandardSelect id="edit-priority" value={editPriority} disabled={editSaving} onValueChange={(value) => setEditPriority(value as SupplyPriority)}
+                  options={(["Low", "Medium", "High", "Urgent"] as SupplyPriority[]).map((item) => ({ value: item, label: priorityLabel(item) }))} />
               </div>
               <div className="space-y-1.5"><Label htmlFor="edit-estimated-cost">Estimated cost</Label><Input id="edit-estimated-cost" type="number" min="0" step="0.01" value={editEstimatedCost} onChange={(event) => setEditEstimatedCost(event.target.value)} disabled={editSaving} /></div>
             </div>
@@ -1073,7 +1076,7 @@ export default function SupplyRequestDetailPage({ params }: { params: Promise<{ 
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editSaving}>Cancel</Button>
-            <Button onClick={() => void saveRequestDetails()} disabled={editSaving || !editTitle.trim()} className="gap-2">{editSaving && <Loader2 className="h-4 w-4 animate-spin" />}Save changes</Button>
+            <Button onClick={() => void saveRequestDetails()} disabled={editSaving || !editTitle.trim() || !editAreaValid} className="gap-2">{editSaving && <Loader2 className="h-4 w-4 animate-spin" />}Save changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

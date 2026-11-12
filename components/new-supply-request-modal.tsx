@@ -1,10 +1,12 @@
 "use client"
 
+import { ClassroomAreaSelect } from "@/components/classroom-area-select"
+import { StandardSelect } from "@/components/ui/standard-select"
 import { useEffect, useState, type FormEvent } from "react"
 import { AlertTriangle, Camera, Loader2, MapPin, PackagePlus } from "lucide-react"
 import { useApp } from "@/lib/store"
-import { CLASSROOM_AGE_GROUPS, SUPPLY_AREAS, SUPPLY_CATEGORIES } from "@/lib/mock-data"
-import type { SupplyPriority, SupplyRequest } from "@/lib/types"
+import { SUPPLY_CATEGORIES } from "@/lib/mock-data"
+import type { ClassroomAgeGroup, SupplyPriority, SupplyRequest } from "@/lib/types"
 import { priorityLabel } from "@/lib/priority-labels"
 import { roleLabel } from "@/lib/role-labels"
 import { Button } from "@/components/ui/button"
@@ -22,12 +24,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { isApiClientError, uploadFileApi } from "@/lib/supply-api"
 
 const priorities: SupplyPriority[] = ["Low", "Medium", "High", "Urgent"]
-const fieldClass = "h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/30 disabled:bg-muted"
 
 export function NewSupplyRequestModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { role, currentUser, locations, addSupplyRequest, createProductionSupplyRequest, isDemoMode } = useApp()
   const [locationId, setLocationId] = useState("")
   const [area, setArea] = useState("")
+  const [classroomAgeGroup, setClassroomAgeGroup] = useState<ClassroomAgeGroup | undefined>()
+  const [areaValid, setAreaValid] = useState(true)
   const [category, setCategory] = useState("")
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -54,6 +57,8 @@ export function NewSupplyRequestModal({ open, onOpenChange }: { open: boolean; o
 
   const reset = () => {
     setArea("")
+    setClassroomAgeGroup(undefined)
+    setAreaValid(true)
     setCategory("")
     setTitle("")
     setDescription("")
@@ -68,16 +73,15 @@ export function NewSupplyRequestModal({ open, onOpenChange }: { open: boolean; o
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!locationId || !category || !title.trim() || !description.trim() || Number(quantity) <= 0 || submitting) return
+    if (!locationId || !category || !title.trim() || !description.trim() || Number(quantity) <= 0 || !areaValid || submitting) return
 
     if (isDemoMode) {
       const timestamp = new Date(`${requestedDate}T12:00:00`).toISOString()
-      const isClassroom = CLASSROOM_AGE_GROUPS.includes(area as (typeof CLASSROOM_AGE_GROUPS)[number])
       const request: SupplyRequest = {
         id: `supply_${Date.now()}`,
         locationId,
-        area: area || undefined,
-        classroomAgeGroup: isClassroom ? (area as SupplyRequest["classroomAgeGroup"]) : undefined,
+        area: area.trim() || undefined,
+        classroomAgeGroup,
         category: category as SupplyRequest["category"],
         title: title.trim(),
         itemName: title.trim(),
@@ -126,8 +130,8 @@ export function NewSupplyRequestModal({ open, onOpenChange }: { open: boolean; o
         category: category as SupplyRequest["category"],
         quantity: Number(quantity),
         priority,
-        classroomAgeGroup: CLASSROOM_AGE_GROUPS.includes(area as (typeof CLASSROOM_AGE_GROUPS)[number]) ? (area as SupplyRequest["classroomAgeGroup"]) : undefined,
-        area: area || undefined,
+        classroomAgeGroup,
+        area: area.trim() || undefined,
         estimatedCost: estimatedCost ? Number(estimatedCost) : undefined,
         approvalRequired: effectiveApprovalRequired,
         fileId,
@@ -172,34 +176,26 @@ export function NewSupplyRequestModal({ open, onOpenChange }: { open: boolean; o
               <Label htmlFor="supply-location">Location</Label>
               <div className="relative">
                 <MapPin className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <select id="supply-location" className={`${fieldClass} pl-8`} value={locationId} onChange={(event) => setLocationId(event.target.value)} disabled={role !== "owner" || submitting} required>
-                  {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
-                </select>
+                <StandardSelect id="supply-location" className="pl-8" value={locationId} disabled={role !== "owner" || submitting} required onValueChange={(value) => setLocationId(value)}
+                  options={locations.map((location) => ({ value: location.id, label: location.name }))} />
               </div>
               {role !== "owner" && <p className="text-[11px] text-muted-foreground">Restricted to your assigned location.</p>}
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="supply-area">Classroom / Area <span className="font-normal text-muted-foreground">(optional)</span></Label>
-              <select id="supply-area" className={fieldClass} value={area} onChange={(event) => setArea(event.target.value)} disabled={submitting}>
-                <option value="">Not specified</option>
-                {SUPPLY_AREAS.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </div>
+            <ClassroomAreaSelect id="supply-area" value={{ area, classroomAgeGroup }} optional disabled={submitting}
+              onChange={(selection) => { setArea(selection.area); setClassroomAgeGroup(selection.classroomAgeGroup) }}
+              onValidityChange={setAreaValid} />
 
             <div className="space-y-1.5">
               <Label htmlFor="supply-category">Category</Label>
-              <select id="supply-category" className={fieldClass} value={category} onChange={(event) => setCategory(event.target.value)} disabled={submitting} required>
-                <option value="">Select category</option>
-                {SUPPLY_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
+              <StandardSelect id="supply-category" value={category} disabled={submitting} required onValueChange={(value) => setCategory(value)} placeholder="Select category"
+                options={[{ value: "", label: "Select category" }, ...SUPPLY_CATEGORIES.map((item) => ({ value: item, label: item }))]} />
             </div>
 
             <div className="space-y-1.5">
               <Label htmlFor="supply-priority">Priority</Label>
-              <select id="supply-priority" className={fieldClass} value={priority} onChange={(event) => setPriority(event.target.value as SupplyPriority)} disabled={submitting}>
-                {priorities.map((item) => <option key={item} value={item}>{priorityLabel(item)}</option>)}
-              </select>
+              <StandardSelect id="supply-priority" value={priority} disabled={submitting} onValueChange={(value) => setPriority(value as SupplyPriority)}
+                options={priorities.map((item) => ({ value: item, label: priorityLabel(item) }))} />
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">

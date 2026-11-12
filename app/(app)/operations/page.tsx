@@ -93,7 +93,7 @@ export default function OperationsPage() {
         </div>
 
         <Select value={locationFilter} onValueChange={(value) => setLocationFilter(value ?? "all")}>
-          <SelectTrigger className="h-9 w-full text-sm sm:w-[180px]">
+          <SelectTrigger aria-label="Filter by location" className="w-full text-sm sm:w-[180px]">
             <SelectValue>{locationFilter === "all" ? "All Locations" : locations.find((location) => location.id === locationFilter)?.name}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -103,7 +103,7 @@ export default function OperationsPage() {
         </Select>
 
         <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value ?? "all")}>
-          <SelectTrigger className="h-9 w-full text-sm sm:w-[190px]">
+          <SelectTrigger aria-label="Filter by type" className="w-full text-sm sm:w-[190px]">
             <SelectValue>{typeFilter === "all" ? "All Record Types" : typeFilter}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -113,7 +113,7 @@ export default function OperationsPage() {
         </Select>
 
         <Select value={classroomFilter} onValueChange={(value) => setClassroomFilter(value ?? "all")}>
-          <SelectTrigger className="h-9 w-full text-sm sm:w-[180px]">
+          <SelectTrigger aria-label="Filter by classroom" className="w-full text-sm sm:w-[180px]">
             <SelectValue>{classroomFilter === "all" ? "All Classrooms" : classroomFilter}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -123,7 +123,7 @@ export default function OperationsPage() {
         </Select>
 
         <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? "all")}>
-          <SelectTrigger className="h-9 w-full text-sm sm:w-[160px]">
+          <SelectTrigger aria-label="Filter by status" className="w-full text-sm sm:w-[160px]">
             <SelectValue>{statusFilter === "all" ? "All Statuses" : statusFilter}</SelectValue>
           </SelectTrigger>
           <SelectContent>

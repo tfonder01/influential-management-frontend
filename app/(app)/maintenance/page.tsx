@@ -1,5 +1,6 @@
 "use client"
 
+import { StandardSelect } from "@/components/ui/standard-select"
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -33,7 +34,6 @@ import {
 
 const approvalOptions: MaintenanceApprovalStatus[] = ["Not Required", "Awaiting Approval", "Approved", "Declined"]
 const statusOptions: MaintenanceStatus[] = ["Submitted", "Approved / Ready", "In Progress", "Waiting", "Completed", "Cancelled"]
-const selectClass = "h-9 w-full min-w-0 rounded-lg border border-input bg-card px-2.5 text-sm text-foreground outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
 
 function SummaryCard({ label, value, icon: Icon, accent }: { label: string; value: string | number; icon: React.ElementType; accent: string }) {
@@ -147,15 +147,12 @@ export default function MaintenancePage() {
             <Input className="h-9 pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issue, location, vendor, or submitted by…" aria-label="Search maintenance requests" />
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <select className={selectClass} value={locationFilter} onChange={(event) => { setLocationFilter(event.target.value); setAreaFilter("all") }} aria-label="Filter by location">
-              <option value="all">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
-            </select>
-            <select className={selectClass} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter by status">
-              <option value="all">All statuses</option>{statusOptions.map((option) => <option key={option}>{option}</option>)}
-            </select>
-            <select className={selectClass} value={approvalFilter} onChange={(event) => setApprovalFilter(event.target.value)} aria-label="Filter by approval">
-              <option value="all">All approvals</option>{approvalOptions.map((option) => <option key={option}>{option}</option>)}
-            </select>
+            <StandardSelect id="maintenance-location-filter" value={locationFilter} aria-label="Filter by location" onValueChange={(value) => { setLocationFilter(value); setAreaFilter("all") }}
+              options={[{ value: "all", label: "All locations" }, ...locations.map((location) => ({ value: location.id, label: location.name }))]} />
+            <StandardSelect id="maintenance-status-filter" value={statusFilter} aria-label="Filter by status" onValueChange={(value) => setStatusFilter(value)}
+              options={[{ value: "all", label: "All statuses" }, ...statusOptions.map((item) => ({ value: item, label: item }))]} />
+            <StandardSelect id="maintenance-approval-filter" value={approvalFilter} aria-label="Filter by approval" onValueChange={(value) => setApprovalFilter(value)}
+              options={[{ value: "all", label: "All approvals" }, ...approvalOptions.map((item) => ({ value: item, label: item }))]} />
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
             <Button
@@ -174,12 +171,10 @@ export default function MaintenancePage() {
           </div>
           {moreFiltersOpen && (
             <div id="maintenance-more-filters" className="mt-2 grid gap-2 rounded-lg border border-border bg-muted/25 p-3 sm:grid-cols-2">
-              <select className={selectClass} value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)} aria-label="Filter by classroom or area">
-                <option value="all">All classrooms / areas</option>{maintenanceAreaFilterOptions(active.filter((request) => locationFilter === "all" || request.locationId === locationFilter).map((request) => request.area)).map((area) => <option key={area} value={area}>{area}</option>)}
-              </select>
-              <select className={selectClass} value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filter by category">
-                <option value="all">All categories</option>{MAINTENANCE_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
-              </select>
+              <StandardSelect id="maintenance-area-filter" value={areaFilter} aria-label="Filter by classroom or area" onValueChange={(value) => setAreaFilter(value)}
+                options={[{ value: "all", label: "All classrooms / areas" }, ...maintenanceAreaFilterOptions(active.filter((request) => locationFilter === "all" || request.locationId === locationFilter).map((request) => request.area)).map((item) => ({ value: item, label: item }))]} />
+              <StandardSelect id="maintenance-category-filter" value={categoryFilter} aria-label="Filter by category" onValueChange={(value) => setCategoryFilter(value)}
+                options={[{ value: "all", label: "All categories" }, ...MAINTENANCE_CATEGORIES.map((item) => ({ value: item, label: item }))]} />
             </div>
           )}
         </div>

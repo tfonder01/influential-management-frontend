@@ -1,5 +1,6 @@
 "use client"
 
+import { StandardSelect } from "@/components/ui/standard-select"
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Loader2, MailPlus, Pencil, RotateCcw, Send, ShieldAlert, UserRoundX, Users } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -311,10 +312,8 @@ export default function UserAdministrationPage() {
 
       <div className="max-w-xs space-y-1.5">
         <Label htmlFor="users-status">Status</Label>
-        <select id="users-status" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-          value={statusFilter} onChange={(event) => changeStatusFilter(event.target.value as UserStatusFilter)}>
-          {USER_STATUS_FILTERS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
+        <StandardSelect id="users-status" value={statusFilter} onValueChange={(value) => changeStatusFilter(value as UserStatusFilter)}
+          options={USER_STATUS_FILTERS} />
       </div>
 
       {loading && (
@@ -436,14 +435,11 @@ export default function UserAdministrationPage() {
                   <Label htmlFor="invite-email">Email</Label>
                   <Input id="invite-email" type="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} required maxLength={254} value={inviteEmail} onChange={(event) => { setInviteEmail(event.target.value); setInviteError("") }} disabled={inviting} />
                 </div>
-                <label className="block space-y-1.5 text-sm font-medium">
-                  Role
-                  <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={inviteRole} onChange={(event) => { const next = event.target.value as ApiRole; setInviteRole(next); if (next === "OWNER") setInviteLocationIds([]); setInviteError("") }} disabled={inviting}>
-                    <option value="OWNER">Owner</option>
-                    <option value="DIRECTOR">Director</option>
-                    <option value="ASSISTANT_DIRECTOR">Assistant Director</option>
-                  </select>
-                </label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="invite-role">Role</Label>
+                  <StandardSelect id="invite-role" value={inviteRole} disabled={inviting} onValueChange={(value) => { const next = value as ApiRole; setInviteRole(next); if (next === "OWNER") setInviteLocationIds([]); setInviteError("") }}
+                    options={[{ value: "OWNER", label: "Owner" }, { value: "DIRECTOR", label: "Director" }, { value: "ASSISTANT_DIRECTOR", label: "Assistant Director" }]} />
+                </div>
                 <fieldset disabled={inviteRole === "OWNER" || inviting} className="space-y-2 disabled:opacity-60">
                   <legend className="text-sm font-medium">Assigned locations</legend>
                   {inviteRole === "OWNER" && <p className="text-xs text-muted-foreground">Owners automatically receive organization-wide access.</p>}
@@ -475,14 +471,11 @@ export default function UserAdministrationPage() {
             <DialogDescription>Update {editTarget?.displayName}&apos;s role and location access.</DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-2">
-            <label className="block space-y-1.5 text-sm font-medium">
-              Role
-              <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={draftRole} onChange={(event) => { const next = event.target.value as ApiRole; setDraftRole(next); if (next === "OWNER") setDraftLocationIds([]); setEditError("") }}>
-                <option value="OWNER">Owner</option>
-                <option value="DIRECTOR">Director</option>
-                <option value="ASSISTANT_DIRECTOR">Assistant Director</option>
-              </select>
-            </label>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-role">Role</Label>
+              <StandardSelect id="edit-role" value={draftRole} onValueChange={(value) => { const next = value as ApiRole; setDraftRole(next); if (next === "OWNER") setDraftLocationIds([]); setEditError("") }}
+                options={[{ value: "OWNER", label: "Owner" }, { value: "DIRECTOR", label: "Director" }, { value: "ASSISTANT_DIRECTOR", label: "Assistant Director" }]} />
+            </div>
             <fieldset disabled={draftRole === "OWNER" || saving} className="space-y-2 disabled:opacity-60">
               <legend className="text-sm font-medium">Assigned locations</legend>
               {draftRole === "OWNER" && <p className="text-xs text-muted-foreground">Owners automatically have organization-wide access.</p>}

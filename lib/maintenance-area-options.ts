@@ -6,7 +6,8 @@ export const CLASSROOM_TYPES = [
   { value: "PRESCHOOL", label: "Preschool" },
 ] as const
 export const FACILITY_AREAS = ["Kitchen", "Office", "Lobby", "Restroom", "Playground", "Exterior", "Hallway", "Storage"]
-export interface MaintenanceAreaSelection { area: string; classroomAgeGroup?: ClassroomAgeGroup }
+export interface ClassroomAreaSelection { area: string; classroomAgeGroup?: ClassroomAgeGroup }
+export type MaintenanceAreaSelection = ClassroomAreaSelection
 const sections = ["A", "B", "C"]
 export const GLOBAL_CLASSROOM_GROUPS = CLASSROOM_TYPES.map((type) => ({
   ...type,
@@ -17,6 +18,12 @@ export const GLOBAL_CLASSROOM_GROUPS = CLASSROOM_TYPES.map((type) => ({
 }))
 export const GLOBAL_CLASSROOM_AREAS = GLOBAL_CLASSROOM_GROUPS.flatMap((group) =>
   [...group.rooms, ...group.branches.flatMap((branch) => branch.rooms)])
+
+/** Only call for a standard menu choice, never to infer classification from Custom text. */
+export function standardClassroomAgeGroup(area: string): ClassroomAgeGroup | undefined {
+  return GLOBAL_CLASSROOM_GROUPS.find((group) => group.rooms.includes(area)
+    || group.branches.some((branch) => branch.rooms.includes(area)))?.label
+}
 
 /** Classification is explicit: never infer classroom identity from custom/saved text. */
 export function maintenanceAreaPayload(input: { area?: string; classroomAgeGroup?: string }) {

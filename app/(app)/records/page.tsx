@@ -123,7 +123,7 @@ function RecordsContent() {
         </div>
 
         <Select value={locationFilter} onValueChange={(value) => setLocationFilter(value ?? "all")}>
-          <SelectTrigger className="h-9 w-full text-sm sm:w-[180px]">
+          <SelectTrigger aria-label="Filter by location" className="w-full text-sm sm:w-[180px]">
             <SelectValue>
               {locationFilter === "all"
                 ? "All Locations"
@@ -141,7 +141,7 @@ function RecordsContent() {
         </Select>
 
         <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value ?? "all")}>
-          <SelectTrigger className="h-9 w-full text-sm sm:w-[190px]">
+          <SelectTrigger aria-label="Filter by category" className="w-full text-sm sm:w-[190px]">
             <SelectValue>
               {categoryFilter === "all" ? "All Categories" : categoryFilter}
             </SelectValue>
@@ -157,7 +157,7 @@ function RecordsContent() {
         </Select>
 
         <Select value={classroomFilter} onValueChange={(value) => setClassroomFilter(value ?? "all")}>
-          <SelectTrigger className="h-9 w-full text-sm sm:w-[180px]">
+          <SelectTrigger aria-label="Filter by classroom" className="w-full text-sm sm:w-[180px]">
             <SelectValue>
               {classroomFilter === "all" ? "All Classrooms" : classroomFilter}
             </SelectValue>
@@ -171,7 +171,7 @@ function RecordsContent() {
         </Select>
 
         <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? "all")}>
-          <SelectTrigger className="h-9 w-full text-sm sm:w-[160px]">
+          <SelectTrigger aria-label="Filter by status" className="w-full text-sm sm:w-[160px]">
             <SelectValue>
               {statusFilter === "all" ? "All Statuses" : statusFilter}
             </SelectValue>

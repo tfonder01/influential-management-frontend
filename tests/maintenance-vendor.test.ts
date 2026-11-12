@@ -31,7 +31,7 @@ test("fake vendor presets and prototype helper text no longer render", () => {
 
 test("Assigned To remains editable while Submitted By remains display-only", () => {
   assert.match(pageSource, /<Label htmlFor="assigned-user">Assigned To/)
-  assert.match(pageSource, /<select id="assigned-user"[^>]*value=\{assignedUserId\}/)
+  assert.match(pageSource, /<StandardSelect id="assigned-user"[^>]*value=\{assignedUserId\}/)
   assert.match(pageSource, /assignedUserId: persistedAssignedUserId/)
   assert.match(pageSource, /Assign a portal user responsible for coordinating this request\./)
   assert.match(pageSource, /<Meta icon=\{User\} label="Submitted by">\{request\.submittedBy\}<\/Meta>/)

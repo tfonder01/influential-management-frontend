@@ -1,11 +1,13 @@
 "use client"
 
+import { maintenanceAreaFilterOptions as supplyAreaFilterOptions } from "@/lib/maintenance-area-options"
+import { StandardSelect } from "@/components/ui/standard-select"
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AlertCircle, ChevronRight, CircleDollarSign, Loader2, Package, PackageCheck, Plus, Search, ShoppingCart, SlidersHorizontal } from "lucide-react"
 import { useApp } from "@/lib/store"
-import { SUPPLY_AREAS, SUPPLY_CATEGORIES } from "@/lib/mock-data"
+import { SUPPLY_CATEGORIES } from "@/lib/mock-data"
 import type { SupplyApprovalStatus, SupplyStatus } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,7 +16,6 @@ import { SupplyApprovalBadge, SupplyPriorityBadge, SupplyStatusBadge } from "@/c
 
 const approvals: SupplyApprovalStatus[] = ["Not Required", "Awaiting Approval", "Needs Information", "Approved", "Declined"]
 const statuses: SupplyStatus[] = ["Submitted", "Approved / Ready", "Ordered", "Waiting / In Transit", "Received", "Cancelled"]
-const selectClass = "h-9 w-full min-w-0 rounded-lg border border-input bg-card px-2.5 text-sm text-foreground outline-none focus:border-ring focus:ring-3 focus:ring-ring/30"
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
 
 function SummaryCard({ label, value, icon: Icon, accent }: { label: string; value: string | number; icon: React.ElementType; accent: string }) {
@@ -75,9 +76,14 @@ export default function SupplyRequestsPage() {
 
     <div className="rounded-xl border border-border bg-card shadow-sm">
       <div className="border-b border-border p-4"><div className="relative"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="h-9 pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search item, location, vendor, or requester…" aria-label="Search supply requests" /></div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-3"><select className={selectClass} value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} aria-label="Filter by location"><option value="all">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select><select className={selectClass} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filter by status"><option value="all">All statuses</option>{statuses.map((value) => <option key={value}>{value}</option>)}</select><select className={selectClass} value={approvalFilter} onChange={(e) => setApprovalFilter(e.target.value)} aria-label="Filter by approval"><option value="all">All approvals</option>{approvals.map((value) => <option key={value}>{value}</option>)}</select></div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3"><StandardSelect id="supply-requests-location-filter" value={locationFilter} aria-label="Filter by location" onValueChange={(value) => setLocationFilter(value)}
+                options={[{ value: "all", label: "All locations" }, ...locations.map((location) => ({ value: location.id, label: location.name }))]} /><StandardSelect id="supply-requests-status-filter" value={statusFilter} aria-label="Filter by status" onValueChange={(value) => setStatusFilter(value)}
+                options={[{ value: "all", label: "All statuses" }, ...statuses.map((item) => ({ value: item, label: item }))]} /><StandardSelect id="supply-requests-approval-filter" value={approvalFilter} aria-label="Filter by approval" onValueChange={(value) => setApprovalFilter(value)}
+                options={[{ value: "all", label: "All approvals" }, ...approvals.map((item) => ({ value: item, label: item }))]} /></div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2"><Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs text-muted-foreground" onClick={() => setMoreOpen((value) => !value)} aria-expanded={moreOpen}><SlidersHorizontal className="h-3.5 w-3.5" />More filters{additionalFilters > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] text-primary-foreground">{additionalFilters}</span>}</Button>{filtersActive && <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground" onClick={reset}>Reset filters</Button>}</div>
-        {moreOpen && <div className="mt-2 grid gap-2 rounded-lg border border-border bg-muted/25 p-3 sm:grid-cols-2"><select className={selectClass} value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}><option value="all">All classrooms / areas</option>{SUPPLY_AREAS.map((value) => <option key={value}>{value}</option>)}</select><select className={selectClass} value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}><option value="all">All categories</option>{SUPPLY_CATEGORIES.map((value) => <option key={value}>{value}</option>)}</select></div>}
+        {moreOpen && <div className="mt-2 grid gap-2 rounded-lg border border-border bg-muted/25 p-3 sm:grid-cols-2"><StandardSelect id="supply-requests-area-filter" value={areaFilter} aria-label="Filter by classroom or area" onValueChange={(value) => setAreaFilter(value)}
+                options={[{ value: "all", label: "All classrooms / areas" }, ...supplyAreaFilterOptions(active.map((request) => request.area ?? "")).map((item) => ({ value: item, label: item }))]} /><StandardSelect id="supply-requests-category-filter" value={categoryFilter} aria-label="Filter by category" onValueChange={(value) => setCategoryFilter(value)}
+                options={[{ value: "all", label: "All categories" }, ...SUPPLY_CATEGORIES.map((item) => ({ value: item, label: item }))]} /></div>}
       </div>
       <div className="flex items-center justify-between border-b border-border bg-muted/25 px-4 py-3"><p className="text-xs font-medium text-muted-foreground">{filtered.length} of {active.length} requests</p><div className="flex items-center gap-3">{!isDemoMode && supplyRequestsLoading && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Refreshing…</span>}<p className="hidden text-[11px] text-muted-foreground sm:block">Approval and fulfillment are tracked separately</p></div></div>
       {showInitialLoading ? <div className="flex flex-col items-center gap-3 py-14 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /><p className="text-sm">Loading supply requests…</p></div> : showInitialError ? <div className="py-14 text-center"><p className="text-sm font-medium text-foreground">Supply requests could not be loaded.</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void refreshSupplyRequests()}>Retry</Button></div> : filtered.length === 0 ? <div className="py-14 text-center"><p className="text-sm font-medium">No matching requests</p><p className="mt-1 text-xs text-muted-foreground">Try clearing one or more filters.</p></div> : <>

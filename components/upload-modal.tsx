@@ -12,17 +12,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { StandardSelect } from "@/components/ui/standard-select"
 import { AlertTriangle, CheckCircle2, File, Loader2, MapPin, Upload, X } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { CLASSROOM_AGE_GROUPS, COMPLIANCE_CATEGORIES, OPERATIONS_RECORD_TYPES } from "@/lib/mock-data"
-import { MONTH_OPTIONS, monthName, startOfWeek } from "@/lib/reporting-period"
+import { MONTH_OPTIONS, startOfWeek } from "@/lib/reporting-period"
 import { uploadFileApi, isApiClientError } from "@/lib/records-api"
 import { generateRecordTitle as generateTitleFromInputs, relatedReferenceFor } from "@/lib/record-title"
 import { RECORD_TYPE_OPTIONS, COMPLIANCE_CADENCE_OPTIONS, OPERATIONS_CADENCE_OPTIONS } from "@/lib/record-form-config"
@@ -309,35 +303,16 @@ export function UploadModal({ open, onClose, defaultLocationId, defaultWorkspace
 
             <div className="grid gap-5 py-2">
               <div className="grid gap-1.5">
-                <Label>Record Area *</Label>
-                <Select value={form.workspace} onValueChange={handleWorkspaceChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select record area">
-                      {form.workspace === "operations" ? "Operations" : form.workspace === "compliance" ? "Compliance" : null}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="compliance">Compliance</SelectItem>
-                    <SelectItem value="operations">Operations</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="upload-workspace">Record Area *</Label>
+                <StandardSelect id="upload-workspace" value={form.workspace} onValueChange={handleWorkspaceChange}
+                  placeholder="Select record area" options={[{ value: "compliance", label: "Compliance" }, { value: "operations", label: "Operations" }]} />
               </div>
 
               <div className="grid gap-1.5">
-                <Label>Location *</Label>
+                <Label htmlFor={showLocationPicker ? "upload-location-id" : undefined}>Location *</Label>
                 {showLocationPicker ? (
-                  <Select value={form.locationId} onValueChange={(value) => setForm((current) => ({ ...current, locationId: value ?? "" }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select location">
-                        {locations.find((location) => location.id === form.locationId)?.name ?? null}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {locations.map((location) => (
-                        <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <StandardSelect id="upload-location-id" value={form.locationId} onValueChange={(value) => setForm((current) => ({ ...current, locationId: value ?? "" }))}
+                    placeholder="Select location" options={locations.map((location) => ({ value: location.id, label: location.name }))} />
                 ) : (
                   <div className="flex items-center gap-2 rounded-lg border border-input bg-muted/30 px-2.5 py-2 text-sm text-foreground">
                     <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -351,33 +326,17 @@ export function UploadModal({ open, onClose, defaultLocationId, defaultWorkspace
 
               {form.workspace === "compliance" && (
                 <div className="grid gap-1.5">
-                  <Label>Compliance Category *</Label>
-                  <Select value={form.complianceCategory} onValueChange={handleComplianceCategoryChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category">{form.complianceCategory || null}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {COMPLIANCE_CATEGORIES.map((category) => (
-                        <SelectItem key={category} value={category}>{category}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="upload-compliance-category">Compliance Category *</Label>
+                  <StandardSelect id="upload-compliance-category" value={form.complianceCategory} onValueChange={handleComplianceCategoryChange}
+                    placeholder="Select category" options={COMPLIANCE_CATEGORIES.map((value) => ({ value, label: value }))} />
                 </div>
               )}
 
               {form.workspace === "operations" && (
                 <div className="grid gap-1.5">
-                  <Label>Operations Record Type *</Label>
-                  <Select value={form.operationsType} onValueChange={handleOperationsTypeChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select record type">{form.operationsType || null}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {OPERATIONS_RECORD_TYPES.map((type) => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="upload-operations-type">Operations Record Type *</Label>
+                  <StandardSelect id="upload-operations-type" value={form.operationsType} onValueChange={handleOperationsTypeChange}
+                    placeholder="Select record type" options={OPERATIONS_RECORD_TYPES.map((value) => ({ value, label: value }))} />
                 </div>
               )}
 
@@ -385,36 +344,17 @@ export function UploadModal({ open, onClose, defaultLocationId, defaultWorkspace
                 <div className="grid gap-4 rounded-xl border border-border bg-muted/20 p-4 [animation:page-enter_180ms_ease-out_both]">
                   {recordTypeOptions && (
                     <div className="grid gap-1.5">
-                      <Label>Record Type *</Label>
-                      <Select value={form.recordType} onValueChange={(value) => setForm((current) => ({ ...current, recordType: value ?? "" }))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select record type">{form.recordType || null}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {recordTypeOptions.map((recordType) => (
-                            <SelectItem key={recordType} value={recordType}>{recordType}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="upload-record-type">Record Type *</Label>
+                      <StandardSelect id="upload-record-type" value={form.recordType} onValueChange={(value) => setForm((current) => ({ ...current, recordType: value ?? "" }))}
+                        placeholder="Select record type" options={recordTypeOptions.map((value) => ({ value, label: value }))} />
                     </div>
                   )}
 
                   {usesClassroom && (
                     <div className="grid gap-1.5">
-                      <Label>Classroom / Age Group {form.complianceCategory === "Classroom Observations" ? "*" : "(optional)"}</Label>
-                      <Select
-                        value={form.classroomAgeGroup}
-                        onValueChange={(value) => setForm((current) => ({ ...current, classroomAgeGroup: (value ?? "") as ClassroomAgeGroup | "" }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select classroom">{form.classroomAgeGroup || null}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CLASSROOM_AGE_GROUPS.map((group) => (
-                            <SelectItem key={group} value={group}>{group}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="upload-classroom-age-group">Classroom / Age Group {form.complianceCategory === "Classroom Observations" ? "*" : "(optional)"}</Label>
+                      <StandardSelect id="upload-classroom-age-group" value={form.classroomAgeGroup} onValueChange={(value) => setForm((current) => ({ ...current, classroomAgeGroup: (value ?? "") as ClassroomAgeGroup | "" }))}
+                        placeholder="Select classroom" options={CLASSROOM_AGE_GROUPS.map((value) => ({ value, label: value }))} />
                     </div>
                   )}
 
@@ -470,28 +410,14 @@ export function UploadModal({ open, onClose, defaultLocationId, defaultWorkspace
                       {form.cadence === "MONTHLY" && (
                         <div className="grid grid-cols-2 gap-3">
                           <div className="grid gap-1.5">
-                            <Label>Month *</Label>
-                            <Select value={form.month} onValueChange={(value) => setForm((current) => ({ ...current, month: value ?? "" }))}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Month">{form.month ? monthName(form.month) : null}</SelectValue>
-                              </SelectTrigger>
-                              <SelectContent>
-                                {MONTH_OPTIONS.map((month) => (
-                                  <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <Label htmlFor="upload-month">Month *</Label>
+                            <StandardSelect id="upload-month" value={form.month} onValueChange={(value) => setForm((current) => ({ ...current, month: value ?? "" }))}
+                              placeholder="Month" options={MONTH_OPTIONS} />
                           </div>
                           <div className="grid gap-1.5">
-                            <Label>Year *</Label>
-                            <Select value={form.year} onValueChange={(value) => setForm((current) => ({ ...current, year: value ?? "" }))}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Year">{form.year || null}</SelectValue>
-                              </SelectTrigger>
-                              <SelectContent>
-                                {YEARS.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}
-                              </SelectContent>
-                            </Select>
+                            <Label htmlFor="upload-year">Year *</Label>
+                            <StandardSelect id="upload-year" value={form.year} onValueChange={(value) => setForm((current) => ({ ...current, year: value ?? "" }))}
+                              placeholder="Year" options={YEARS.map((value) => ({ value, label: value }))} />
                           </div>
                         </div>
                       )}
@@ -500,15 +426,9 @@ export function UploadModal({ open, onClose, defaultLocationId, defaultWorkspace
 
                   {usesYear && (
                     <div className="grid gap-1.5">
-                      <Label>Year *</Label>
-                      <Select value={form.year} onValueChange={(value) => setForm((current) => ({ ...current, year: value ?? "" }))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select year">{form.year || null}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {YEARS.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="upload-year-licensing">Year *</Label>
+                      <StandardSelect id="upload-year-licensing" value={form.year} onValueChange={(value) => setForm((current) => ({ ...current, year: value ?? "" }))}
+                        placeholder="Year" options={YEARS.map((value) => ({ value, label: value }))} />
                     </div>
                   )}
 

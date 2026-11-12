@@ -1,3 +1,4 @@
+import { selectPopupOption, selectClassroomArea } from "./select"
 import {
   expect,
   type APIRequestContext,
@@ -361,8 +362,8 @@ export async function createSupplyRequest(page: Page, title: string): Promise<st
   await page.goto("/supply-requests")
   await page.getByRole("button", { name: "New Supply Request" }).click()
   const dialog = page.getByRole("dialog", { name: "New Supply Request" })
-  await dialog.getByLabel("Classroom / Area").selectOption({ label: "Preschool" })
-  await dialog.getByLabel("Category").selectOption({ label: "Supplies" })
+  await selectClassroomArea(dialog.getByLabel("Classroom / Area"), "Preschool - 1 A")
+  await selectPopupOption(dialog.getByLabel("Category"), "Supplies")
   await dialog.getByLabel("Item / Request Title").fill(title)
   await dialog.getByLabel("Description").fill(`Disposable STG E2E supply request for ${title}`)
   await dialog.getByLabel("Quantity").fill("2")
@@ -373,11 +374,6 @@ export async function createSupplyRequest(page: Page, title: string): Promise<st
   })
   await expect(dialog).toBeHidden({ timeout: STG_MUTATION_UI_TIMEOUT_MS })
   return openCreatedItem(page, "/supply-requests", "Search supply requests", title)
-}
-
-async function selectPopupOption(combobox: Locator, option: string): Promise<void> {
-  await combobox.click()
-  await combobox.page().getByRole("option", { name: option, exact: true }).click()
 }
 
 export async function createComplianceRecord(
@@ -496,15 +492,5 @@ export async function archiveRecordIfActive(page: Page, path: string): Promise<v
 
 /** Select a global classroom or facility area through the accessible cascading menu. */
 export async function selectMaintenanceArea(page: Page, name: string) {
-  await page.getByLabel("Classroom / Area", { exact: true }).click()
-  const type = ["Infant", "Toddler", "Twaddler", "Prepper", "Preschool"].find((type) => name.startsWith(`${type} `))
-  if (type) {
-    await page.getByRole("menuitem", { name: type, exact: true }).click()
-    if (type === "Preschool") {
-      const level = /^Preschool - ([123]) [ABC]$/.exec(name)?.[1]
-      if (!level) throw new Error(`Unknown global classroom: ${name}`)
-      await page.getByRole("menuitem", { name: level, exact: true }).click()
-    }
-  }
-  await page.getByRole("menuitem", { name, exact: true }).click()
+  await selectClassroomArea(page.getByLabel("Classroom / Area", { exact: true }), name)
 }

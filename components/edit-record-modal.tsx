@@ -12,18 +12,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { StandardSelect } from "@/components/ui/standard-select"
 import { AlertTriangle, Loader2 } from "lucide-react"
 import { useApp } from "@/lib/store"
 import { CLASSROOM_AGE_GROUPS, COMPLIANCE_CATEGORIES, OPERATIONS_RECORD_TYPES } from "@/lib/mock-data"
 import { RECORD_TYPE_OPTIONS, COMPLIANCE_CADENCE_OPTIONS, OPERATIONS_CADENCE_OPTIONS } from "@/lib/record-form-config"
-import { MONTH_OPTIONS, monthName, startOfWeek } from "@/lib/reporting-period"
+import { MONTH_OPTIONS, startOfWeek } from "@/lib/reporting-period"
 import { generateRecordTitle, stripReferencePrefix } from "@/lib/record-title"
 import { isApiClientError, type UpdateRecordInput } from "@/lib/records-api"
 import type {
@@ -247,69 +241,34 @@ export function EditRecordModal({ open, onClose, record }: EditRecordModalProps)
         <div className="grid gap-5 py-2">
           {form.workspace === "compliance" && (
             <div className="grid gap-1.5">
-              <Label>Compliance Category *</Label>
-              <Select value={form.complianceCategory} onValueChange={handleComplianceCategoryChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category">{form.complianceCategory || null}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {COMPLIANCE_CATEGORIES.map((category) => (
-                    <SelectItem key={category} value={category}>{category}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="edit-record-compliance-category">Compliance Category *</Label>
+              <StandardSelect id="edit-record-compliance-category" value={form.complianceCategory} onValueChange={handleComplianceCategoryChange}
+                placeholder="Select category" options={COMPLIANCE_CATEGORIES.map((value) => ({ value, label: value }))} />
             </div>
           )}
 
           {form.workspace === "operations" && (
             <div className="grid gap-1.5">
-              <Label>Operations Record Type *</Label>
-              <Select value={form.operationsType} onValueChange={handleOperationsTypeChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select record type">{form.operationsType || null}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {OPERATIONS_RECORD_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>{type}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="edit-record-operations-type">Operations Record Type *</Label>
+              <StandardSelect id="edit-record-operations-type" value={form.operationsType} onValueChange={handleOperationsTypeChange}
+                placeholder="Select record type" options={OPERATIONS_RECORD_TYPES.map((value) => ({ value, label: value }))} />
             </div>
           )}
 
           <div className="grid gap-4 rounded-xl border border-border bg-muted/20 p-4">
             {recordTypeOptions && (
               <div className="grid gap-1.5">
-                <Label>Record Type</Label>
-                <Select value={form.recordType} onValueChange={(value) => setForm((current) => ({ ...current, recordType: value ?? "" }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select record type">{form.recordType || null}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {recordTypeOptions.map((recordType) => (
-                      <SelectItem key={recordType} value={recordType}>{recordType}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="edit-record-record-type">Record Type</Label>
+                <StandardSelect id="edit-record-record-type" value={form.recordType} onValueChange={(value) => setForm((current) => ({ ...current, recordType: value ?? "" }))}
+                  placeholder="Select record type" options={recordTypeOptions.map((value) => ({ value, label: value }))} />
               </div>
             )}
 
             {usesClassroom && (
               <div className="grid gap-1.5">
-                <Label>Classroom / Age Group {form.complianceCategory === "Classroom Observations" ? "*" : "(optional)"}</Label>
-                <Select
-                  value={form.classroomAgeGroup}
-                  onValueChange={(value) => setForm((current) => ({ ...current, classroomAgeGroup: (value ?? "") as ClassroomAgeGroup | "" }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select classroom">{form.classroomAgeGroup || null}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CLASSROOM_AGE_GROUPS.map((group) => (
-                      <SelectItem key={group} value={group}>{group}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="edit-record-classroom-age-group">Classroom / Age Group {form.complianceCategory === "Classroom Observations" ? "*" : "(optional)"}</Label>
+                <StandardSelect id="edit-record-classroom-age-group" value={form.classroomAgeGroup} onValueChange={(value) => setForm((current) => ({ ...current, classroomAgeGroup: (value ?? "") as ClassroomAgeGroup | "" }))}
+                  placeholder="Select classroom" options={CLASSROOM_AGE_GROUPS.map((value) => ({ value, label: value }))} />
               </div>
             )}
 
@@ -362,28 +321,14 @@ export function EditRecordModal({ open, onClose, record }: EditRecordModalProps)
                 {form.cadence === "MONTHLY" && (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-1.5">
-                      <Label>Month *</Label>
-                      <Select value={form.month} onValueChange={(value) => setForm((current) => ({ ...current, month: value ?? "" }))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Month">{form.month ? monthName(form.month) : null}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {MONTH_OPTIONS.map((month) => (
-                            <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="edit-record-month">Month *</Label>
+                      <StandardSelect id="edit-record-month" value={form.month} onValueChange={(value) => setForm((current) => ({ ...current, month: value ?? "" }))}
+                        placeholder="Month" options={MONTH_OPTIONS} />
                     </div>
                     <div className="grid gap-1.5">
-                      <Label>Year *</Label>
-                      <Select value={form.year} onValueChange={(value) => setForm((current) => ({ ...current, year: value ?? "" }))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Year">{form.year || null}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {YEARS.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="edit-record-year">Year *</Label>
+                      <StandardSelect id="edit-record-year" value={form.year} onValueChange={(value) => setForm((current) => ({ ...current, year: value ?? "" }))}
+                        placeholder="Year" options={YEARS.map((value) => ({ value, label: value }))} />
                     </div>
                   </div>
                 )}
@@ -392,15 +337,9 @@ export function EditRecordModal({ open, onClose, record }: EditRecordModalProps)
 
             {usesYear && (
               <div className="grid gap-1.5">
-                <Label>Year *</Label>
-                <Select value={form.year} onValueChange={(value) => setForm((current) => ({ ...current, year: value ?? "" }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select year">{form.year || null}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {YEARS.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="edit-record-year-licensing">Year *</Label>
+                <StandardSelect id="edit-record-year-licensing" value={form.year} onValueChange={(value) => setForm((current) => ({ ...current, year: value ?? "" }))}
+                  placeholder="Year" options={YEARS.map((value) => ({ value, label: value }))} />
               </div>
             )}
 
