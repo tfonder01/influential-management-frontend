@@ -16,7 +16,8 @@ import {
   Wrench,
 } from "lucide-react"
 import { useApp } from "@/lib/store"
-import { MAINTENANCE_AREAS, MAINTENANCE_CATEGORIES } from "@/lib/mock-data"
+import { maintenanceAreaFilterOptions } from "@/lib/maintenance-area-options"
+import { MAINTENANCE_CATEGORIES } from "@/lib/mock-data"
 import type { MaintenanceApprovalStatus, MaintenanceStatus } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -146,7 +147,7 @@ export default function MaintenancePage() {
             <Input className="h-9 pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issue, location, vendor, or submitted by…" aria-label="Search maintenance requests" />
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <select className={selectClass} value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)} aria-label="Filter by location">
+            <select className={selectClass} value={locationFilter} onChange={(event) => { setLocationFilter(event.target.value); setAreaFilter("all") }} aria-label="Filter by location">
               <option value="all">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
             </select>
             <select className={selectClass} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter by status">
@@ -174,7 +175,7 @@ export default function MaintenancePage() {
           {moreFiltersOpen && (
             <div id="maintenance-more-filters" className="mt-2 grid gap-2 rounded-lg border border-border bg-muted/25 p-3 sm:grid-cols-2">
               <select className={selectClass} value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)} aria-label="Filter by classroom or area">
-                <option value="all">All classrooms / areas</option>{MAINTENANCE_AREAS.map((area) => <option key={area} value={area}>{area}</option>)}
+                <option value="all">All classrooms / areas</option>{maintenanceAreaFilterOptions(active.filter((request) => locationFilter === "all" || request.locationId === locationFilter).map((request) => request.area)).map((area) => <option key={area} value={area}>{area}</option>)}
               </select>
               <select className={selectClass} value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filter by category">
                 <option value="all">All categories</option>{MAINTENANCE_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}

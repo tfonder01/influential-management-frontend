@@ -1,14 +1,14 @@
 "use client"
 
 import { useEffect, useState, type FormEvent } from "react"
-import { AlertTriangle, Camera, Loader2, MapPin, Wrench } from "lucide-react"
+import { AlertTriangle, Camera, Loader2, Wrench } from "lucide-react"
+import { StandardSelect } from "@/components/ui/standard-select"
+import { MaintenanceAreaSelect } from "@/components/maintenance-area-select"
 import { useApp } from "@/lib/store"
 import {
-  CLASSROOM_AGE_GROUPS,
-  MAINTENANCE_AREAS,
   MAINTENANCE_CATEGORIES,
 } from "@/lib/mock-data"
-import type { MaintenancePriority, MaintenanceRequest } from "@/lib/types"
+import type { ClassroomAgeGroup, MaintenancePriority, MaintenanceRequest } from "@/lib/types"
 import { priorityLabel } from "@/lib/priority-labels"
 import { roleLabel } from "@/lib/role-labels"
 import { Button } from "@/components/ui/button"
@@ -26,12 +26,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { isApiClientError, uploadFileApi } from "@/lib/maintenance-api"
 
 const priorities: MaintenancePriority[] = ["Low", "Medium", "High", "Urgent"]
-const fieldClass = "h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/30 disabled:bg-muted"
 
 export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { role, currentUser, locations, addMaintenanceRequest, createProductionMaintenanceRequest, isDemoMode } = useApp()
   const [locationId, setLocationId] = useState("")
   const [area, setArea] = useState("")
+  const [classroomAgeGroup, setClassroomAgeGroup] = useState<ClassroomAgeGroup | undefined>(undefined)
   const [category, setCategory] = useState("")
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -50,13 +50,14 @@ export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boole
   useEffect(() => {
     if (!open) return
     setLocationId(role === "owner" ? (locations[0]?.id ?? "") : (currentUser.locationId ?? ""))
+    setArea(""); setClassroomAgeGroup(undefined)
     setDateReported(new Date().toISOString().slice(0, 10))
     setSubmitError("")
     setSubmitting(false)
   }, [open, role, locations, currentUser.locationId])
 
   const reset = () => {
-    setArea("")
+    setArea(""); setClassroomAgeGroup(undefined)
     setCategory("")
     setTitle("")
     setDescription("")
@@ -71,18 +72,17 @@ export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boole
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!locationId || !area || !category || !title.trim() || !description.trim() || submitting) return
+    if (!locationId || !area.trim() || !category || !title.trim() || !description.trim() || submitting) return
 
     if (isDemoMode) {
       const timestamp = new Date(`${dateReported}T12:00:00`).toISOString()
-      const isClassroom = CLASSROOM_AGE_GROUPS.includes(area as (typeof CLASSROOM_AGE_GROUPS)[number])
       const request: MaintenanceRequest = {
         id: `maint_${Date.now()}`,
         title: title.trim(),
         description: description.trim(),
         locationId,
-        classroomAgeGroup: isClassroom ? area as (typeof CLASSROOM_AGE_GROUPS)[number] : undefined,
-        area,
+        classroomAgeGroup,
+        area: area.trim(),
         category: category as MaintenanceRequest["category"],
         priority,
         submittedBy: currentUser.name,
@@ -125,7 +125,8 @@ export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boole
         description: description.trim(),
         category: category as MaintenanceRequest["category"],
         priority,
-        area,
+        classroomAgeGroup,
+        area: area.trim(),
         estimatedCost: estimatedCost ? Number(estimatedCost) : undefined,
         approvalRequired: effectiveApprovalRequired,
         fileId,
@@ -168,36 +169,26 @@ export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boole
           <div className="grid min-h-0 gap-4 overflow-y-auto px-4 py-4 sm:grid-cols-2 sm:px-5 sm:py-5">
             <div className="space-y-1.5">
               <Label htmlFor="maintenance-location">Location</Label>
-              <div className="relative">
-                <MapPin className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <select id="maintenance-location" className={`${fieldClass} pl-8`} value={locationId} onChange={(event) => setLocationId(event.target.value)} disabled={role !== "owner" || submitting} required>
-                  {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
-                </select>
-              </div>
+              <StandardSelect id="maintenance-location" value={locationId} onValueChange={setLocationId}
+                options={locations.map((location) => ({ value: location.id, label: location.name }))}
+                disabled={role !== "owner" || submitting} required />
               {role !== "owner" && <p className="text-[11px] text-muted-foreground">Restricted to your assigned location.</p>}
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="maintenance-area">Classroom / Area</Label>
-              <select id="maintenance-area" className={fieldClass} value={area} onChange={(event) => setArea(event.target.value)} disabled={submitting} required>
-                <option value="">Select classroom or facility area</option>
-                {MAINTENANCE_AREAS.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </div>
+            <MaintenanceAreaSelect id="maintenance-area" value={{ area, classroomAgeGroup }}
+              onChange={(selection) => { setArea(selection.area); setClassroomAgeGroup(selection.classroomAgeGroup) }} disabled={submitting} required />
 
             <div className="space-y-1.5">
               <Label htmlFor="maintenance-category">Maintenance Category</Label>
-              <select id="maintenance-category" className={fieldClass} value={category} onChange={(event) => setCategory(event.target.value)} disabled={submitting} required>
-                <option value="">Select category</option>
-                {MAINTENANCE_CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
+              <StandardSelect id="maintenance-category" value={category} onValueChange={setCategory}
+                placeholder="Select category" options={MAINTENANCE_CATEGORIES.map((item) => ({ value: item, label: item }))}
+                disabled={submitting} required />
             </div>
 
             <div className="space-y-1.5">
               <Label htmlFor="maintenance-priority">Priority</Label>
-              <select id="maintenance-priority" className={fieldClass} value={priority} onChange={(event) => setPriority(event.target.value as MaintenancePriority)} disabled={submitting}>
-                {priorities.map((item) => <option key={item} value={item}>{priorityLabel(item)}</option>)}
-              </select>
+              <StandardSelect id="maintenance-priority" value={priority} onValueChange={(value) => setPriority(value as MaintenancePriority)}
+                options={priorities.map((item) => ({ value: item, label: priorityLabel(item) }))} disabled={submitting} />
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
@@ -234,7 +225,7 @@ export function NewMaintenanceRequestModal({ open, onOpenChange }: { open: boole
               </label>
               <Input
                 id="maintenance-photo"
-                className="sr-only"
+                className="sr-only !h-px !w-px"
                 type="file"
                 accept="image/*"
                 disabled={submitting}

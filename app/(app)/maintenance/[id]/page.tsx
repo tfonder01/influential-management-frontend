@@ -32,9 +32,10 @@ import {
   Wrench,
   XCircle,
 } from "lucide-react"
+import { MaintenanceAreaSelect } from "@/components/maintenance-area-select"
 import { useApp } from "@/lib/store"
 import { MAINTENANCE_CATEGORIES, USERS } from "@/lib/mock-data"
-import type { Comment, MaintenanceAttachment, MaintenanceCategory, MaintenancePriority, MaintenanceStatus, Role } from "@/lib/types"
+import type { ClassroomAgeGroup, Comment, MaintenanceAttachment, MaintenanceCategory, MaintenancePriority, MaintenanceStatus, Role } from "@/lib/types"
 import { priorityLabel } from "@/lib/priority-labels"
 import { formatUsPhoneNumber, normalizeUsPhoneNumber } from "@/lib/phone"
 import { Button } from "@/components/ui/button"
@@ -208,6 +209,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
   const [editTitle, setEditTitle] = useState("")
   const [editDescription, setEditDescription] = useState("")
   const [editArea, setEditArea] = useState("")
+  const [editClassroomType, setEditClassroomType] = useState<ClassroomAgeGroup | undefined>(undefined)
   const [editCategory, setEditCategory] = useState<MaintenanceCategory | "">("")
   const [editPriority, setEditPriority] = useState<MaintenancePriority>("Medium")
   const [editEstimatedCost, setEditEstimatedCost] = useState("")
@@ -468,6 +470,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     setEditTitle(request.title)
     setEditDescription(request.description ?? "")
     setEditArea(request.area ?? "")
+    setEditClassroomType(request.classroomAgeGroup)
     setEditCategory(request.category)
     setEditPriority(request.priority)
     setEditEstimatedCost(request.estimatedCost?.toString() ?? "")
@@ -477,8 +480,8 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
 
   const saveRequestDetails = async () => {
     if (editSaving) return
-    if (!editTitle.trim() || !editCategory) {
-      setEditError("Title and category are required.")
+    if (!editTitle.trim() || !editCategory || (editArea !== (request?.area ?? "") && !editArea.trim())) {
+      setEditError("Title, category, and a selected classroom or area are required.")
       return
     }
     setEditSaving(true)
@@ -487,7 +490,8 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
       updateMaintenanceRequest(id, {
         title: editTitle.trim(),
         description: editDescription.trim() || undefined,
-        area: editArea.trim() || undefined,
+        area: editArea,
+        classroomAgeGroup: editClassroomType,
         category: editCategory as MaintenanceCategory,
         priority: editPriority,
         estimatedCost: editEstimatedCost ? Number(editEstimatedCost) : undefined,
@@ -502,8 +506,8 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
         description: editDescription.trim() || undefined,
         category: editCategory,
         priority: editPriority,
-        classroomAgeGroup: request.classroomAgeGroup,
-        area: editArea.trim() || undefined,
+        classroomAgeGroup: editClassroomType,
+        area: editArea,
         assignedUserId: persistedAssignedUserId,
         vendorName: vendor || undefined,
         vendorContact: normalizeUsPhoneNumber(vendorContact) || undefined,
@@ -542,7 +546,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
         category: request.category,
         priority: request.priority,
         classroomAgeGroup: request.classroomAgeGroup,
-        area: request.area || undefined,
+        area: request.area,
         assignedUserId: persistedAssignedUserId,
         vendorName: vendor || undefined,
         vendorContact: normalizeUsPhoneNumber(vendorContact) || undefined,
@@ -1149,7 +1153,8 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
             <div className="space-y-1.5"><Label htmlFor="edit-title">Title</Label><Input id="edit-title" value={editTitle} onChange={(event) => setEditTitle(event.target.value)} disabled={editSaving} /></div>
             <div className="space-y-1.5"><Label htmlFor="edit-description">Description</Label><Textarea id="edit-description" rows={3} value={editDescription} onChange={(event) => setEditDescription(event.target.value)} disabled={editSaving} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label htmlFor="edit-area">Classroom / Area</Label><Input id="edit-area" value={editArea} onChange={(event) => setEditArea(event.target.value)} disabled={editSaving} /></div>
+              <MaintenanceAreaSelect key={editOpen ? `edit-${request.id}` : "closed"} id="edit-area"
+                value={{ area: editArea, classroomAgeGroup: editClassroomType }} onChange={(selection) => { setEditArea(selection.area); setEditClassroomType(selection.classroomAgeGroup) }} disabled={editSaving} />
               <div className="space-y-1.5">
                 <Label htmlFor="edit-category">Category</Label>
                 <select id="edit-category" className={fieldClass} value={editCategory} onChange={(event) => setEditCategory(event.target.value as MaintenanceCategory)} disabled={editSaving}>

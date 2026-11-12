@@ -5,6 +5,7 @@ import { Loader2, MailPlus, Pencil, RotateCcw, Send, ShieldAlert, UserRoundX, Us
 import { useRouter } from "next/navigation"
 import { useApp } from "@/lib/store"
 import { useAuth } from "@/lib/auth"
+import { USER_STATUS_FILTERS, statusesForFilter, matchesUserStatus, userStatusEmptyMessage, type UserStatusFilter } from "@/lib/user-status-filter"
 import { USERS } from "@/lib/mock-data"
 import { ApiClientError, type ApiRole } from "@/lib/api-client"
 import {
@@ -57,6 +58,18 @@ export default function UserAdministrationPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
   const [page, setPage] = useState(0)
+  const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("current")
+  const [reload, setReload] = useState(0)
+  const requestSequence = useRef(0)
+  const demoDisabledStatuses = useRef(new Map<string, AdminUser["status"]>())
+  const [demoUsers, setDemoUsers] = useState<AdminUser[]>(() => USERS.map((user, index) => ({
+    id: user.id, displayName: user.name,
+    email: `${user.name.toLowerCase().replaceAll(" ", ".")}@example.test`,
+    role: user.role.toUpperCase() as ApiRole, status: "ACTIVE",
+    locations: user.locationId ? locations.filter((location) => location.id === user.locationId)
+      .map((location) => ({ id: location.id, name: location.name })) : [],
+    createdAt: new Date(2026, 0, index + 2).toISOString(),
+  })))
   const [totalPages, setTotalPages] = useState(1)
   const [totalElements, setTotalElements] = useState(0)
   const [editTarget, setEditTarget] = useState<AdminUser | null>(null)
@@ -78,6 +91,7 @@ export default function UserAdministrationPage() {
   const inviteSubmittingRef = useRef(false)
 
   const load = useCallback(async () => {
+    const sequence = ++requestSequence.current
     if (role !== "owner") {
       setLoading(false)
       return
@@ -85,35 +99,43 @@ export default function UserAdministrationPage() {
     setLoading(true)
     setLoadError("")
     try {
-      if (isDemoMode) {
-        const demoUsers: AdminUser[] = USERS.map((user, index) => ({
-          id: user.id,
-          displayName: user.name,
-          email: `${user.name.toLowerCase().replaceAll(" ", ".")}@example.test`,
-          role: user.role.toUpperCase() as ApiRole,
-          status: "ACTIVE",
-          locations: user.locationId
-            ? locations.filter((location) => location.id === user.locationId).map((location) => ({ id: location.id, name: location.name }))
-            : [],
-          createdAt: new Date(2026, 0, index + 2).toISOString(),
-        }))
-        setUsers(demoUsers)
-        setTotalElements(demoUsers.length)
-        setTotalPages(1)
-      } else {
-        const result = await listAdminUsers(page)
-        setUsers(result.content)
-        setTotalElements(result.totalElements)
-        setTotalPages(Math.max(result.totalPages, 1))
+      const filteredDemo = demoUsers.filter((user) => matchesUserStatus(user.status, statusFilter))
+      const result = isDemoMode ? {
+        content: filteredDemo.slice(page * 25, (page + 1) * 25),
+        totalElements: filteredDemo.length, totalPages: Math.ceil(filteredDemo.length / 25),
+      } : await listAdminUsers(page, 25, statusesForFilter(statusFilter))
+      if (sequence !== requestSequence.current) return
+      const pages = Math.max(result.totalPages, 1)
+      if (page >= pages) {
+        setPage(pages - 1)
+        return
       }
+      setUsers(result.content)
+      setTotalElements(result.totalElements)
+      setTotalPages(pages)
     } catch (error) {
-      setLoadError(errorMessage(error, "Users could not be loaded."))
+      if (sequence === requestSequence.current) setLoadError(errorMessage(error, "Users could not be loaded."))
     } finally {
-      setLoading(false)
+      if (sequence === requestSequence.current) setLoading(false)
     }
-  }, [isDemoMode, locations, page, role])
+  }, [isDemoMode, demoUsers, page, role, statusFilter])
 
-  useEffect(() => { void load() }, [load])
+  const invalidateRequests = useCallback(() => { ++requestSequence.current }, [])
+  useEffect(() => {
+    void load()
+    return invalidateRequests
+  }, [load, reload, invalidateRequests])
+
+  const refreshList = () => {
+    ++requestSequence.current
+    setReload((value) => value + 1)
+  }
+  const changeStatusFilter = (next: UserStatusFilter) => {
+    ++requestSequence.current
+    setLoading(true)
+    setPage(0)
+    setStatusFilter(next)
+  }
 
   const dirty = useMemo(() => {
     if (!editTarget) return false
@@ -130,6 +152,7 @@ export default function UserAdministrationPage() {
 
   const replaceUser = (updated: AdminUser) => {
     setUsers((current) => current.map((user) => user.id === updated.id ? updated : user))
+    if (isDemoMode) setDemoUsers((current) => current.map((user) => user.id === updated.id ? updated : user))
   }
 
   const resetInvite = () => {
@@ -174,8 +197,8 @@ export default function UserAdministrationPage() {
             expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
           }
         : await inviteAdminUser(inviteName, inviteEmail, inviteRole, inviteRole === "OWNER" ? [] : inviteLocationIds)
-      setUsers((current) => [result.user, ...current])
-      setTotalElements((value) => value + 1)
+      if (isDemoMode) setDemoUsers((current) => [result.user, ...current])
+      refreshList()
       setInviteResult(result)
       showToast("Invitation created")
     } catch (error) {
@@ -246,12 +269,14 @@ export default function UserAdministrationPage() {
     const disabling = lifecycleTarget.status !== "DISABLED"
     setLifecycleSaving(true)
     try {
+      if (isDemoMode && disabling) demoDisabledStatuses.current.set(lifecycleTarget.id, lifecycleTarget.status)
       const updated = isDemoMode
-        ? { ...lifecycleTarget, status: disabling ? "DISABLED" as const : "ACTIVE" as const }
+        ? { ...lifecycleTarget, status: disabling ? "DISABLED" as const : demoDisabledStatuses.current.get(lifecycleTarget.id) ?? "ACTIVE" as const }
         : disabling
           ? await disableAdminUser(lifecycleTarget.id)
           : await reactivateAdminUser(lifecycleTarget.id)
       replaceUser(updated)
+      refreshList()
       setLifecycleTarget(null)
       showToast(disabling ? "User disabled" : "User reactivated")
     } catch (error) {
@@ -284,6 +309,14 @@ export default function UserAdministrationPage() {
         </div>
       </div>
 
+      <div className="max-w-xs space-y-1.5">
+        <Label htmlFor="users-status">Status</Label>
+        <select id="users-status" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+          value={statusFilter} onChange={(event) => changeStatusFilter(event.target.value as UserStatusFilter)}>
+          {USER_STATUS_FILTERS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      </div>
+
       {loading && (
         <div className="flex min-h-40 items-center justify-center rounded-xl border border-border bg-card">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -301,8 +334,8 @@ export default function UserAdministrationPage() {
       {!loading && !loadError && users.length === 0 && (
         <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
           <Users className="mx-auto h-8 w-8 text-muted-foreground" />
-          <p className="mt-3 text-sm font-medium">No users found</p>
-          <p className="mt-1 text-xs text-muted-foreground">Invite a user to give them secure access.</p>
+          <p className="mt-3 text-sm font-medium">{userStatusEmptyMessage(statusFilter)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Choose another status filter or invite a user.</p>
         </div>
       )}
 
@@ -357,9 +390,9 @@ export default function UserAdministrationPage() {
 
       {!loading && !loadError && totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((value) => value - 1)}>Previous</Button>
+          <Button variant="outline" size="sm" disabled={page === 0} onClick={() => { ++requestSequence.current; setPage((value) => value - 1) }}>Previous</Button>
           <span className="text-xs text-muted-foreground">Page {page + 1} of {totalPages}</span>
-          <Button variant="outline" size="sm" disabled={page + 1 >= totalPages} onClick={() => setPage((value) => value + 1)}>Next</Button>
+          <Button variant="outline" size="sm" disabled={page + 1 >= totalPages} onClick={() => { ++requestSequence.current; setPage((value) => value + 1) }}>Next</Button>
         </div>
       )}
 

@@ -26,8 +26,10 @@ export interface InviteUserResult {
   developmentSetupUrl?: string
 }
 
-export function listAdminUsers(page = 0, size = 25) {
-  return apiClient.request<AdminUserPage>(`/api/admin/users?page=${page}&size=${size}`)
+export function listAdminUsers(page = 0, size = 25, statuses: readonly AdminUserStatus[] = []) {
+  const query = new URLSearchParams({ page: String(page), size: String(size) })
+  statuses.forEach((status) => query.append("status", status))
+  return apiClient.request<AdminUserPage>(`/api/admin/users?${query}`)
 }
 
 export function updateAdminUser(id: string, role: ApiRole, locationIds: string[]) {

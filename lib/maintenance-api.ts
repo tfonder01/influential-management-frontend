@@ -1,3 +1,4 @@
+import { maintenanceAreaPayload } from "./maintenance-area-options"
 import { apiClient } from "./api-client"
 import type { CommentMention } from "./mentions-api"
 import {
@@ -84,8 +85,6 @@ const CLASSROOM_FROM_API: Record<string, ClassroomAgeGroup> = Object.fromEntries
   Object.entries(CLASSROOM_TO_API).map(([label, api]) => [api, label as ClassroomAgeGroup])
 )
 
-const CLASSROOM_AREAS = new Set<ClassroomAgeGroup>(Object.keys(CLASSROOM_TO_API) as ClassroomAgeGroup[])
-
 export type ApiMaintenanceAttachmentType = "ISSUE_PHOTO" | "COMPLETION_PHOTO" | "INVOICE" | "OTHER"
 
 export interface ApiMaintenanceSummary {
@@ -145,15 +144,6 @@ export interface ApiMaintenanceComment {
   body: string
   createdAt: string
   mentions: CommentMention[]
-}
-
-function areaPayload(area?: string): { area?: string; classroomAgeGroup?: string } {
-  const trimmedArea = area?.trim()
-  if (!trimmedArea) return {}
-  const classroomAgeGroup = CLASSROOM_AREAS.has(trimmedArea as ClassroomAgeGroup)
-    ? CLASSROOM_TO_API[trimmedArea as ClassroomAgeGroup]
-    : undefined
-  return { area: trimmedArea, classroomAgeGroup }
 }
 
 function attachmentToUiAttachment(
@@ -301,6 +291,7 @@ export async function getMaintenanceDetail(id: string): Promise<MaintenanceDetai
 }
 
 export interface CreateMaintenanceInput {
+  classroomAgeGroup?: ClassroomAgeGroup
   locationId: string
   title: string
   description?: string
@@ -324,7 +315,7 @@ export async function createMaintenanceRequestApi(input: CreateMaintenanceInput)
     estimatedCost: input.estimatedCost,
     approvalRequired: input.approvalRequired,
     fileId: input.fileId,
-    ...areaPayload(input.area),
+    ...maintenanceAreaPayload(input),
   }
   const record = await apiClient.request<ApiMaintenanceDetail>("/api/maintenance", {
     method: "POST",
@@ -349,7 +340,6 @@ export interface UpdateMaintenanceInput {
 }
 
 export async function updateMaintenanceRequestApi(id: string, input: UpdateMaintenanceInput): Promise<MaintenanceDetailResult> {
-  const area = input.area ?? input.classroomAgeGroup
   const body = {
     title: input.title,
     description: input.description,
@@ -361,7 +351,7 @@ export async function updateMaintenanceRequestApi(id: string, input: UpdateMaint
     scheduledDate: input.scheduledDate,
     estimatedCost: input.estimatedCost,
     finalCost: input.finalCost,
-    ...areaPayload(area),
+    ...maintenanceAreaPayload(input),
   }
   const record = await apiClient.request<ApiMaintenanceDetail>(`/api/maintenance/${id}`, {
     method: "PATCH",
