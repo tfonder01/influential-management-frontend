@@ -2,7 +2,7 @@
 
 import { StandardSelect } from "@/components/ui/standard-select"
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Loader2, MailPlus, Pencil, RotateCcw, Send, ShieldAlert, UserRoundX, Users } from "lucide-react"
+import { Loader2, MailPlus, Pencil, RotateCcw, Send, ShieldAlert, Trash2, UserRoundX, Users } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useApp } from "@/lib/store"
 import { useAuth } from "@/lib/auth"
@@ -10,6 +10,7 @@ import { USER_STATUS_FILTERS, statusesForFilter, matchesUserStatus, userStatusEm
 import { USERS } from "@/lib/mock-data"
 import { ApiClientError, type ApiRole } from "@/lib/api-client"
 import {
+  deleteUnusedAdminInvitation,
   disableAdminUser,
   inviteAdminUser,
   listAdminUsers,
@@ -90,6 +91,32 @@ export default function UserAdministrationPage() {
   const [inviting, setInviting] = useState(false)
   const [resendingId, setResendingId] = useState<string | null>(null)
   const inviteSubmittingRef = useRef(false)
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState("")
+  const deleteSubmittingRef = useRef(false)
+  const deleteTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const usersHeadingRef = useRef<HTMLHeadingElement | null>(null)
+  const conflictingMutation = deleting || saving || lifecycleSaving || inviting || resendingId !== null
+
+  const deleteInvitation = async () => {
+    if (!deleteTarget || deleteSubmittingRef.current || deleteTarget.canDeletePermanently !== true || isDemoMode) return
+    deleteSubmittingRef.current = true
+    setDeleting(true)
+    setDeleteError("")
+    try {
+      await deleteUnusedAdminInvitation(deleteTarget.id)
+      setUsers((current) => current.filter((user) => user.id !== deleteTarget.id))
+      setDeleteTarget(null)
+      refreshList()
+      showToast("Unused invitation permanently deleted")
+    } catch (error) {
+      setDeleteError(errorMessage(error, "The invitation could not be permanently deleted."))
+    } finally {
+      setDeleting(false)
+      deleteSubmittingRef.current = false
+    }
+  }
 
   const load = useCallback(async () => {
     const sequence = ++requestSequence.current
@@ -301,18 +328,18 @@ export default function UserAdministrationPage() {
     <div className="mx-auto max-w-5xl space-y-5 overflow-x-hidden">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">User administration</h2>
+          <h2 ref={usersHeadingRef} tabIndex={-1} className="text-lg font-semibold text-foreground outline-none">User administration</h2>
           <p className="mt-1 text-sm text-muted-foreground">Invite users and manage roles, location access, and account status.</p>
         </div>
         <div className="flex items-center gap-3">
           {!loading && !loadError && <p className="text-xs text-muted-foreground">{totalElements} {totalElements === 1 ? "user" : "users"}</p>}
-          <Button className="gap-1.5" onClick={openInvite}><MailPlus className="h-4 w-4" />Invite user</Button>
+          <Button className="gap-1.5" disabled={conflictingMutation} onClick={openInvite}><MailPlus className="h-4 w-4" />Invite user</Button>
         </div>
       </div>
 
       <div className="max-w-xs space-y-1.5">
         <Label htmlFor="users-status">Status</Label>
-        <StandardSelect id="users-status" value={statusFilter} onValueChange={(value) => changeStatusFilter(value as UserStatusFilter)}
+        <StandardSelect id="users-status" disabled={deleting} value={statusFilter} onValueChange={(value) => changeStatusFilter(value as UserStatusFilter)}
           options={USER_STATUS_FILTERS} />
       </div>
 
@@ -361,22 +388,28 @@ export default function UserAdministrationPage() {
                     <p className="mt-3 text-[11px] text-muted-foreground">Last login: {formatDate(user.lastLoginAt)} · Added: {formatDate(user.createdAt)}</p>
                   </div>
                   <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
-                    <Button variant="outline" size="sm" className="flex-1 gap-1.5 sm:flex-none" onClick={() => openEdit(user)}>
+                    <Button variant="outline" size="sm" className="flex-1 gap-1.5 sm:flex-none" disabled={conflictingMutation} onClick={() => openEdit(user)}>
                       <Pencil className="h-3.5 w-3.5" />Edit access
                     </Button>
                     {user.status === "INVITED" && (
-                      <Button variant="outline" size="sm" className="flex-1 gap-1.5 sm:flex-none" disabled={resendingId === user.id} onClick={() => void resendInvite(user)}>
+                      <Button variant="outline" size="sm" className="flex-1 gap-1.5 sm:flex-none" disabled={conflictingMutation} onClick={() => void resendInvite(user)}>
                         {resendingId === user.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}Resend invite
                       </Button>
                     )}
                     {(user.status === "ACTIVE" || user.status === "INVITED") && (
-                      <Button variant="destructive" size="sm" className="flex-1 gap-1.5 sm:flex-none" disabled={isSelf} title={isSelf ? "You cannot disable your own account" : undefined} onClick={() => setLifecycleTarget(user)}>
+                      <Button variant="destructive" size="sm" className="flex-1 gap-1.5 sm:flex-none" disabled={isSelf || conflictingMutation} title={isSelf ? "You cannot disable your own account" : undefined} onClick={() => setLifecycleTarget(user)}>
                         <UserRoundX className="h-3.5 w-3.5" />Disable
                       </Button>
                     )}
                     {user.status === "DISABLED" && (
-                      <Button variant="outline" size="sm" className="flex-1 gap-1.5 sm:flex-none" onClick={() => setLifecycleTarget(user)}>
+                      <Button variant="outline" size="sm" className="flex-1 gap-1.5 sm:flex-none" disabled={conflictingMutation} onClick={() => setLifecycleTarget(user)}>
                         <RotateCcw className="h-3.5 w-3.5" />Reactivate
+                      </Button>
+                    )}
+                    {!isDemoMode && !isSelf && user.canDeletePermanently === true && (
+                      <Button variant="destructive" size="sm" className="flex-1 gap-1.5 sm:flex-none" disabled={conflictingMutation}
+                        onClick={(event) => { deleteTriggerRef.current = event.currentTarget; setDeleteError(""); setDeleteTarget(user) }}>
+                        <Trash2 className="h-3.5 w-3.5" />Delete permanently
                       </Button>
                     )}
                   </div>
@@ -389,9 +422,9 @@ export default function UserAdministrationPage() {
 
       {!loading && !loadError && totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <Button variant="outline" size="sm" disabled={page === 0} onClick={() => { ++requestSequence.current; setPage((value) => value - 1) }}>Previous</Button>
+          <Button variant="outline" size="sm" disabled={page === 0 || deleting} onClick={() => { ++requestSequence.current; setPage((value) => value - 1) }}>Previous</Button>
           <span className="text-xs text-muted-foreground">Page {page + 1} of {totalPages}</span>
-          <Button variant="outline" size="sm" disabled={page + 1 >= totalPages} onClick={() => { ++requestSequence.current; setPage((value) => value + 1) }}>Next</Button>
+          <Button variant="outline" size="sm" disabled={page + 1 >= totalPages || deleting} onClick={() => { ++requestSequence.current; setPage((value) => value + 1) }}>Next</Button>
         </div>
       )}
 
@@ -492,6 +525,26 @@ export default function UserAdministrationPage() {
             <Button variant="outline" onClick={() => setEditTarget(null)} disabled={saving}>Cancel</Button>
             <Button onClick={() => void saveEdit()} disabled={!dirty || saving}>
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open && !deleteSubmittingRef.current) setDeleteTarget(null) }}>
+        <DialogContent className="max-w-[calc(100%-1rem)] sm:max-w-md" showCloseButton={!deleting}
+          finalFocus={() => deleteTriggerRef.current?.isConnected ? deleteTriggerRef.current : usersHeadingRef.current}>
+          <DialogHeader className="pr-6">
+            <DialogTitle>Delete this unused invitation permanently?</DialogTitle>
+            <DialogDescription className="break-words">
+              This removes {deleteTarget?.displayName}&apos;s account ({deleteTarget?.email}) and pending invitation.
+              This cannot be undone. You can invite this email again afterward.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteError && <p role="alert" className="text-sm text-destructive">{deleteError}</p>}
+          <DialogFooter>
+            <Button variant="outline" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={deleting} onClick={() => void deleteInvitation()}>
+              {deleting && <Loader2 className="h-4 w-4 animate-spin" />}Delete permanently
             </Button>
           </DialogFooter>
         </DialogContent>

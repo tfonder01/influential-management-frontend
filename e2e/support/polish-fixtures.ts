@@ -3,6 +3,7 @@ import type { AdminUser } from "../../lib/user-admin-api"
 
 const locations = ["one", "two"].map((id) => ({ id, name: `Location ${id}`, addressLine1: "", city: "", state: "", postalCode: "", active: true }))
 export const user = (id: string, status: AdminUser["status"]): AdminUser => ({ id, status, displayName: `User ${id}`, email: `${id}@example.test`,
+  canDeletePermanently: status === "INVITED", deleteBlockedReason: status === "INVITED" ? null : "USER_ALREADY_ACTIVATED",
   role: "DIRECTOR", locations: [{ id: "one", name: "Location one" }], createdAt: "2026-01-01" })
 
 export async function fixtures(page: Page, options: { locationName?: string; role?: "OWNER" | "DIRECTOR" } = {}) {
@@ -11,7 +12,7 @@ export async function fixtures(page: Page, options: { locationName?: string; rol
     record: { id: "history", requestNumber: 12, title: "Historical request", locationId: "one", locationName: "Location one", category: "BUILDING_FACILITY", priority: "LOW", status: "SUBMITTED",
       approvalStatus: "NOT_REQUIRED", archived: false, attachments: [], commentCount: 0, area: "Other", classroomAgeGroup: "INFANT",
       description: "Historical fixture", createdAt: "2026-01-01", updatedAt: "2026-01-01", submittedByUserId: "owner", submittedByName: "Test Owner" } as Record<string, unknown>,
-    showHistory: false,
+    showHistory: false, deleteRequests: [] as string[], deleteGate: null as Promise<void> | null, deleteError: "", deleteStatus: 204, nextInviteId: 0,
     userRequests: [] as URL[], payloads: [] as Record<string, unknown>[], slowStatus: "", classroomRequests: [] as string[] }
   await page.route("**/api/**", async (route) => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname
@@ -31,8 +32,16 @@ export async function fixtures(page: Page, options: { locationName?: string; rol
     else if (path === "/api/admin/settings/locations") body = scopedLocations
     else if (path.includes("/classrooms")) { state.classroomRequests.push(path); status = 500
     } else if (path === "/api/admin/users/invite") {
-      const input = request.postDataJSON(), invited = { ...user("new-invite", "INVITED"), displayName: input.name, email: input.email }
+      const input = request.postDataJSON(), invited = { ...user(`new-invite-${++state.nextInviteId}`, "INVITED"), displayName: input.name, email: input.email }
       state.users.push(invited); body = { user: invited, expiresAt: "2026-12-01" }
+    } else if (/\/api\/admin\/users\/[^/]+$/.test(path) && request.method() === "DELETE") {
+      const id = path.split("/").at(-1)!
+      state.deleteRequests.push(id)
+      if (state.deleteGate) await state.deleteGate
+      if (state.deleteError) { await route.fulfill({ status: 409, json: { code: "USER_ALREADY_ACTIVATED", message: state.deleteError } }); return }
+      if (state.deleteStatus !== 204) { await route.fulfill({ status: state.deleteStatus, json: { message: "Unexpected response" } }); return }
+      state.users = state.users.filter((item) => item.id !== id)
+      await route.fulfill({ status: 204 }); return
     } else if (/\/api\/admin\/users\/[^/]+\/(disable|reactivate)$/.test(path)) {
       const item = state.users.find((user) => user.id === path.split("/").at(-2))!
       item.status = path.endsWith("/disable") ? "DISABLED" : "ACTIVE"; body = item

@@ -1,4 +1,4 @@
-import { apiClient, type ApiRole } from "./api-client"
+import { apiClient, ApiClientError, type ApiRole } from "./api-client"
 
 export type AdminUserStatus = "ACTIVE" | "DISABLED" | "INVITED"
 
@@ -11,6 +11,8 @@ export interface AdminUser {
   locations: { id: string; name: string }[]
   lastLoginAt?: string
   createdAt: string
+  canDeletePermanently?: boolean
+  deleteBlockedReason?: string | null
 }
 
 export interface AdminUserPage {
@@ -56,4 +58,11 @@ export function disableAdminUser(id: string) {
 
 export function reactivateAdminUser(id: string) {
   return apiClient.request<AdminUser>(`/api/admin/users/${id}/reactivate`, { method: "POST" })
+}
+
+export async function deleteUnusedAdminInvitation(id: string) {
+  const result = await apiClient.request<unknown>(`/api/admin/users/${id}`, { method: "DELETE" })
+  if (result !== undefined) {
+    throw new ApiClientError("The deletion was not confirmed. Reload users before trying again.", 502, "DELETE_NOT_CONFIRMED")
+  }
 }
