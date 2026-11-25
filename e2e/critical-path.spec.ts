@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test"
 import { withSelectOptions } from "./support/select"
 import {
+  assistantDirectorCredentials,
   directorCredentials,
   locationFixtures,
   ownerCredentials,
@@ -131,9 +132,11 @@ test.describe("Influential Management STG critical paths", () => {
     await expect(supportDialog).toBeHidden()
   })
 
-  test("Director sees assigned-location data and cannot open another location's request", async ({ browser, request }) => {
+  test("Director and Assistant Director see assigned locations and cannot open a restricted request", async ({ browser, request }) => {
     const owner = await browser.newPage()
     const director = await browser.newPage()
+    const assistant = await browser.newPage()
+    let assistantTour: Awaited<ReturnType<typeof setOnboardingState>> | undefined
     const title = uniqueName("E2E restricted maintenance")
     const { directorLocationName, restrictedLocationName } = locationFixtures()
     let requestPath: string | undefined
@@ -146,30 +149,34 @@ test.describe("Influential Management STG critical paths", () => {
       const requestId = requestPath.split("/").at(-1)
       expect(requestId).toBeTruthy()
 
-      await login(director, directorCredentials())
-      await director.goto("/maintenance")
-      const locationFilter = director.getByLabel("Filter by location")
-      await withSelectOptions(locationFilter, async (popup) => {
-        const assignedLocation = popup.getByRole("option", { name: directorLocationName, exact: true })
-        await expect(assignedLocation).toBeVisible()
-        await expect(assignedLocation).toBeEnabled()
-        await expect(popup.getByRole("option", { name: restrictedLocationName, exact: true })).toHaveCount(0)
-      })
-      await expect(director.getByText(title, { exact: true })).toHaveCount(0)
-
-      const detailResponse = director.waitForResponse(
-        (response) =>
-          response.request().method() === "GET" &&
-          response.url().includes(`/api/maintenance/${requestId}`)
-      )
-      await director.goto(requestPath)
-      const response = await detailResponse
-      expect([403, 404]).toContain(response.status())
-      await expect(director.getByRole("heading", { name: title, exact: true })).toHaveCount(0)
+      assistantTour = await setOnboardingState(request, assistantDirectorCredentials(), "DISMISSED")
+      for (const [staff, credentials, role] of [[director, directorCredentials(), "DIRECTOR"], [assistant, assistantDirectorCredentials(), "ASSISTANT_DIRECTOR"]] as const) {
+        expect((await login(staff, credentials)).user.role).toBe(role)
+        await staff.goto("/maintenance")
+        const locationFilter = staff.getByLabel("Filter by location")
+        await withSelectOptions(locationFilter, async (popup) => {
+          const assignedLocation = popup.getByRole("option", { name: directorLocationName, exact: true })
+          await expect(assignedLocation).toBeVisible()
+          await expect(assignedLocation).toBeEnabled()
+          await expect(popup.getByRole("option", { name: restrictedLocationName, exact: true })).toHaveCount(0)
+        })
+        await expect(staff.getByText(title, { exact: true })).toHaveCount(0)
+        const detailResponse = staff.waitForResponse((response) =>
+          response.request().method() === "GET" && new URL(response.url()).pathname === `/api/maintenance/${requestId}`)
+        await staff.goto(requestPath)
+        expect([403, 404]).toContain((await detailResponse).status())
+        await expect(staff.getByRole("heading", { name: title, exact: true })).toHaveCount(0)
+      }
     } finally {
-      if (requestPath) await archiveMaintenanceIfActive(owner, requestPath)
-      await owner.close()
-      await director.close()
+      try {
+        if (requestPath) await archiveMaintenanceIfActive(owner, requestPath)
+      } finally {
+        try {
+          if (assistantTour) await setOnboardingState(request, assistantDirectorCredentials(), assistantTour)
+        } finally {
+          await Promise.all([owner.context().close(), director.context().close(), assistant.context().close()])
+        }
+      }
     }
   })
 

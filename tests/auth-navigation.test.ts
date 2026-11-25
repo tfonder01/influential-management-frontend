@@ -6,6 +6,7 @@ import {
   protectedRouteDecision,
   safeInternalReturnTo,
 } from "../lib/auth-navigation.ts"
+import { roleLabel } from "../lib/role-labels.ts"
 
 test("protected navigation waits while session restoration is pending", () => {
   assert.equal(protectedRouteDecision(true, "loading"), "loading")
@@ -35,7 +36,8 @@ test("successful login returns to a safe internal deep link", () => {
   )
 })
 
-test("Maintenance Only returns to Maintenance or personal Settings", () => {
+test("the Maintenance role uses the Maintenance label and routes to its workspace or Settings", () => {
+  assert.equal(roleLabel("maintenance"), "Maintenance")
   assert.equal(authenticatedDestination("", "MAINTENANCE"), "/maintenance")
   assert.equal(authenticatedDestination("?returnTo=%2Fmaintenance%2Ftest", "MAINTENANCE"), "/maintenance/test")
   assert.equal(authenticatedDestination("?returnTo=%2Fsettings", "MAINTENANCE"), "/settings")

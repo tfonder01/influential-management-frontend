@@ -17,7 +17,7 @@ test("STG disposable invite can be disabled, deleted, and invited again", async 
       const id = new URL(route.request().url()).pathname.split("/").at(-1)!
       if (!created.has(id)) { await route.abort(); throw new Error("Refused to delete a user not created by this test") }
     }
-    await route.continue()
+    await route.fallback()
   })
 
   async function invite() {

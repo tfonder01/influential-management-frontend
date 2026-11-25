@@ -8,7 +8,8 @@ import {
   type Response,
 } from "@playwright/test"
 import { randomUUID } from "node:crypto"
-import { stagingBackendUrl, type TestCredentials } from "./env"
+import { stagingBackendUrl, stagingBaseUrl, type TestCredentials } from "./env"
+import { guardedApiOrigin, guardStagingContext } from "./staging-guard"
 
 export const uploadFixturePath = "e2e/fixtures/staging-upload.pdf"
 export const uploadFixtureName = "staging-upload.pdf"
@@ -19,7 +20,7 @@ const STG_MUTATION_UI_TIMEOUT_MS = 20_000
 const STG_UPLOAD_TIMEOUT_MS = 45_000
 
 export type OnboardingStatus = "NOT_STARTED" | "DISMISSED" | "COMPLETED"
-export type LoginDestination = "dashboard" | "onboarding-welcome"
+export type LoginDestination = "dashboard" | "onboarding-welcome" | "maintenance"
 
 export interface ApiWaitOptions {
   label: string
@@ -28,23 +29,45 @@ export interface ApiWaitOptions {
   timeout?: number
 }
 
-function matchesApiRequest(request: Request, options: ApiWaitOptions): boolean {
-  return request.method() === options.method && new URL(request.url()).pathname === options.path
+function matchesApiRequest(request: Request, options: ApiWaitOptions, origin?: string): boolean {
+  const url = new URL(request.url())
+  return (!origin || url.origin === origin) && request.method() === options.method && url.pathname === options.path
+}
+
+export async function expectApiStatus(
+  response: Pick<Response, "ok" | "status" | "json">,
+  operation: string,
+  expected: number | "success",
+): Promise<void> {
+  const status = response.status()
+  if (expected === "success" ? response.ok() : status === expected) return
+
+  const body = await response.json().catch(() => null) as { code?: unknown; violations?: unknown } | null
+  const code = typeof body?.code === "string" && /^[A-Z][A-Z0-9_]{1,63}$/.test(body.code) ? body.code : undefined
+  const fields = Array.isArray(body?.violations)
+    ? [...new Set(body.violations.flatMap((violation) => {
+      const field = violation?.field
+      return typeof field === "string" && /^[a-z][a-zA-Z0-9]{0,63}$/.test(field) ? [field] : []
+    }))].slice(0, 10)
+    : []
+  const details = [code, fields.length ? `fields: ${fields.join(", ")}` : undefined].filter(Boolean)
+  throw new Error(`${operation} returned HTTP ${status}${details.length ? ` (${details.join(", ")})` : ""}. Expected ${expected === "success" ? "a successful response" : `HTTP ${expected}`}.`)
 }
 
 export async function waitForSuccessfulApiResponse(
   page: Page,
   options: ApiWaitOptions
 ): Promise<Response> {
+  const origin = guardedApiOrigin(page.context())
   const timeout = options.timeout ?? STG_MUTATION_TIMEOUT_MS
   const startedAt = Date.now()
   let requestStarted = false
   let requestFailure: string | undefined
   const onRequest = (request: Request) => {
-    if (matchesApiRequest(request, options)) requestStarted = true
+    if (matchesApiRequest(request, options, origin)) requestStarted = true
   }
   const onRequestFailed = (request: Request) => {
-    if (matchesApiRequest(request, options)) {
+    if (matchesApiRequest(request, options, origin)) {
       requestFailure = request.failure()?.errorText ?? "unknown network failure"
     }
   }
@@ -53,7 +76,7 @@ export async function waitForSuccessfulApiResponse(
   page.on("requestfailed", onRequestFailed)
   try {
     const response = await page.waitForResponse(
-      (candidate) => matchesApiRequest(candidate.request(), options),
+      (candidate) => matchesApiRequest(candidate.request(), options, origin),
       { timeout }
     ).catch((cause: unknown) => {
       const detail = requestFailure
@@ -67,12 +90,7 @@ export async function waitForSuccessfulApiResponse(
       )
     })
 
-    if (!response.ok()) {
-      throw new Error(
-        `${options.label}: ${options.method} ${options.path} returned `
-          + `HTTP ${response.status()} ${response.statusText()}.`
-      )
-    }
+    await expectApiStatus(response, `${options.label}: ${options.method} ${options.path}`, "success")
 
     if ([204, 205, 304].includes(response.status())) return response
 
@@ -216,6 +234,7 @@ export async function setOnboardingState(
 ): Promise<OnboardingStatus> {
   const authResponse = await apiRequest.post(`${stagingBackendUrl()}/api/auth/login`, {
     data: credentials,
+    maxRedirects: 0,
   })
   if (!authResponse.ok()) {
     throw new Error(`Prepare onboarding state: login returned HTTP ${authResponse.status()}.`)
@@ -230,6 +249,7 @@ export async function setOnboardingState(
   }
   const response = await apiRequest.patch(`${stagingBackendUrl()}/api/users/me/onboarding`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
+    maxRedirects: 0,
     data: {
       tourAudience: session.user.role === "OWNER" ? "OWNER" : "LOCATION_STAFF",
       version: 1,
@@ -246,12 +266,15 @@ export async function login(
   page: Page,
   credentials: TestCredentials,
   destination: LoginDestination = "dashboard"
-): Promise<void> {
+): Promise<{ accessToken: string; user: { role: string } }> {
+  await guardStagingContext(page.context())
   await page.goto("/login")
+  if (new URL(page.url()).origin !== stagingBaseUrl()) throw new Error("Sign-in page escaped the approved staging origin")
   await page.getByLabel("Email").fill(credentials.email)
   await page.getByLabel("Password", { exact: true }).fill(credentials.password)
+  let session: { accessToken: string; user: { role: string } }
   try {
-    await clickAndWaitForApi(
+    const response = await clickAndWaitForApi(
       page,
       page.getByRole("button", { name: "Sign in", exact: true }),
       {
@@ -261,6 +284,7 @@ export async function login(
         timeout: AUTH_TRANSITION_TIMEOUT_MS,
       }
     )
+    session = await response.json()
   } catch (cause) {
     const visibleError = await page.getByRole("alert").textContent({ timeout: 2_000 }).catch(() => null)
     const requestDiagnostic = cause instanceof Error ? cause.message : "unknown login failure"
@@ -276,20 +300,20 @@ export async function login(
   const destinationReady = destination === "onboarding-welcome"
     ? expect(welcome).toBeVisible({ timeout: AUTH_TRANSITION_TIMEOUT_MS })
     : Promise.all([
-        expect(page.getByRole("heading", { name: "Dashboard", exact: true }).first())
+        expect(page.getByRole("heading", { name: destination === "maintenance" ? "Maintenance" : "Dashboard", exact: true }).first())
           .toBeVisible({ timeout: AUTH_TRANSITION_TIMEOUT_MS }),
         expect(welcome).toBeHidden({ timeout: AUTH_TRANSITION_TIMEOUT_MS }),
       ])
 
   await Promise.all([
-    expect(page).toHaveURL(/\/dashboard(?:[/?#]|$)/, { timeout: AUTH_TRANSITION_TIMEOUT_MS }),
+    expect(page).toHaveURL(destination === "maintenance" ? /\/maintenance\/?$/ : /\/dashboard(?:[/?#]|$)/, { timeout: AUTH_TRANSITION_TIMEOUT_MS }),
     destinationReady,
   ]).catch(async (cause: unknown) => {
     const state = {
       url: page.url(),
       welcomeVisible: await welcome.isVisible().catch(() => false),
       dashboardHeadingVisible: await page
-        .getByRole("heading", { name: "Dashboard", exact: true })
+        .getByRole("heading", { name: destination === "maintenance" ? "Maintenance" : "Dashboard", exact: true })
         .first()
         .isVisible()
         .catch(() => false),
@@ -300,6 +324,28 @@ export async function login(
       { cause }
     )
   })
+  return session
+}
+
+export async function readInvitationSetupLink(dialog: Locator): Promise<string> {
+  try {
+    const href = await dialog.getByRole("link", { name: "Open setup page", exact: true }).getAttribute("href")
+    if (href?.trim()) return href
+  } catch {
+    // Locator errors can include a URL. Keep invitation diagnostics free of tokens.
+  }
+  throw new Error("Invitation ready did not show an account setup link")
+}
+
+export function validatedInvitationSetupUrl(href: string, frontendOrigin: string): URL {
+  try {
+    const url = new URL(href, frontendOrigin)
+    if (url.origin === frontendOrigin && url.pathname === "/setup-account"
+      && !url.username && !url.password && url.searchParams.get("token")) return url
+  } catch {
+    // URL parsing errors can contain the original input.
+  }
+  throw new Error("The invitation setup link does not match the approved staging route")
 }
 
 export async function logout(page: Page): Promise<void> {
@@ -331,11 +377,25 @@ async function openCreatedItem(
   return new URL(page.url()).pathname
 }
 
+export async function selectMaintenanceLocation(trigger: Locator, locationName: string) {
+  await expect(trigger).toBeVisible()
+  if (await trigger.isEnabled()) await selectPopupOption(trigger, locationName)
+  const selected = trigger.locator('[data-slot="select-value"]')
+  if (await selected.count()) {
+    await expect(selected, "Selected Maintenance location").toHaveText(locationName)
+  } else {
+    await expect.poll(async () => (await trigger.innerText()).replace(/\s*▼\s*$/, "").trim(), {
+      message: "Selected Maintenance location",
+    }).toBe(locationName)
+  }
+}
+
 export async function createMaintenanceRequest(
   page: Page,
   title: string,
   locationName?: string,
-  areaName = "Kitchen"
+  areaName = "Kitchen",
+  onCreated?: (id: string) => void,
 ): Promise<string> {
   await page.goto("/maintenance")
   // Finish initial records/supply/summary loading before filling the modal.
@@ -352,7 +412,7 @@ export async function createMaintenanceRequest(
   await dialog.getByLabel("Issue / Request Title").fill(title)
   await dialog.getByLabel("Description", { exact: true }).fill(description)
   if (locationName) {
-    await selectPopupOption(location, locationName)
+    await selectMaintenanceLocation(location, locationName)
   }
   await selectPopupOption(category, "Building / Facility")
   await selectMaintenanceArea(page, areaName)
@@ -370,11 +430,13 @@ export async function createMaintenanceRequest(
   await expect(page.getByRole("menu")).toHaveCount(0)
   const submit = dialog.getByRole("button", { name: "Submit Request", exact: true })
   await expect(submit).toBeEnabled()
-  await clickAndWaitForApi(page, submit, {
+  const response = await clickAndWaitForApi(page, submit, {
     label: "Create maintenance request",
     method: "POST",
     path: "/api/maintenance",
   })
+  await expectApiStatus(response, "Create maintenance request", 201)
+  if (onCreated) onCreated((await response.json() as { id: string }).id)
   await expect(dialog).toBeHidden({ timeout: STG_MUTATION_UI_TIMEOUT_MS })
   return openCreatedItem(page, "/maintenance", "Search maintenance requests", title)
 }

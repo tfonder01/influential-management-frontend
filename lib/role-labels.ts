@@ -5,7 +5,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   owner: "Owner",
   director: "Director",
   assistant_director: "Assistant Director",
-  maintenance: "Maintenance Only",
+  maintenance: "Maintenance",
 }
 
 export function roleLabel(role: Role): string {

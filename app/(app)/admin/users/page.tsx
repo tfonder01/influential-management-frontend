@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth"
 import { USER_STATUS_FILTERS, statusesForFilter, matchesUserStatus, userStatusEmptyMessage, type UserStatusFilter } from "@/lib/user-status-filter"
 import { USERS } from "@/lib/mock-data"
 import { ApiClientError, type ApiRole } from "@/lib/api-client"
+import { roleLabel } from "@/lib/role-labels"
 import {
   deleteUnusedAdminInvitation,
   disableAdminUser,
@@ -37,7 +38,7 @@ const ROLE_LABELS: Record<ApiRole, string> = {
   OWNER: "Owner",
   DIRECTOR: "Director",
   ASSISTANT_DIRECTOR: "Assistant Director",
-  MAINTENANCE: "Maintenance Only",
+  MAINTENANCE: roleLabel("maintenance"),
 }
 
 function errorMessage(error: unknown, fallback: string) {
@@ -472,7 +473,7 @@ export default function UserAdministrationPage() {
                 <div className="space-y-1.5">
                   <Label htmlFor="invite-role">Role</Label>
                   <StandardSelect id="invite-role" value={inviteRole} disabled={inviting} onValueChange={(value) => { const next = value as ApiRole; setInviteRole(next); if (next === "OWNER") setInviteLocationIds([]); setInviteError("") }}
-                    options={[{ value: "OWNER", label: "Owner" }, { value: "DIRECTOR", label: "Director" }, { value: "ASSISTANT_DIRECTOR", label: "Assistant Director" }, ...(!isDemoMode ? [{ value: "MAINTENANCE", label: "Maintenance Only" }] : [])]} />
+                    options={[{ value: "OWNER", label: "Owner" }, { value: "DIRECTOR", label: "Director" }, { value: "ASSISTANT_DIRECTOR", label: "Assistant Director" }, ...(!isDemoMode ? [{ value: "MAINTENANCE", label: ROLE_LABELS.MAINTENANCE }] : [])]} />
                 </div>
                 <fieldset disabled={inviteRole === "OWNER" || inviting} className="space-y-2 disabled:opacity-60">
                   <legend className="text-sm font-medium">Assigned locations</legend>
@@ -508,7 +509,7 @@ export default function UserAdministrationPage() {
             <div className="space-y-1.5">
               <Label htmlFor="edit-role">Role</Label>
               <StandardSelect id="edit-role" value={draftRole} onValueChange={(value) => { const next = value as ApiRole; setDraftRole(next); if (next === "OWNER") setDraftLocationIds([]); setEditError("") }}
-                options={[{ value: "OWNER", label: "Owner" }, { value: "DIRECTOR", label: "Director" }, { value: "ASSISTANT_DIRECTOR", label: "Assistant Director" }, ...(!isDemoMode ? [{ value: "MAINTENANCE", label: "Maintenance Only" }] : [])]} />
+                options={[{ value: "OWNER", label: "Owner" }, { value: "DIRECTOR", label: "Director" }, { value: "ASSISTANT_DIRECTOR", label: "Assistant Director" }, ...(!isDemoMode ? [{ value: "MAINTENANCE", label: ROLE_LABELS.MAINTENANCE }] : [])]} />
             </div>
             <fieldset disabled={draftRole === "OWNER" || saving} className="space-y-2 disabled:opacity-60">
               <legend className="text-sm font-medium">Assigned locations</legend>

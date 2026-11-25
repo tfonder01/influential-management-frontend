@@ -5,7 +5,7 @@ import { defineConfig, devices } from "@playwright/test"
 import { stagingBaseUrl } from "./e2e/support/env"
 
 const localEnvFile = resolve(__dirname, ".env.playwright.local")
-if (existsSync(localEnvFile)) loadEnvFile(localEnvFile)
+if (process.env.PLAYWRIGHT_SKIP_LOCAL_ENV !== "true" && existsSync(localEnvFile)) loadEnvFile(localEnvFile)
 
 export default defineConfig({
   testDir: "./e2e",
@@ -23,9 +23,10 @@ export default defineConfig({
     headless: true,
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
-    screenshot: "only-on-failure",
-    trace: "on-first-retry",
-    video: "retain-on-failure",
+    screenshot: "off",
+    trace: "off",
+    video: "off",
+    serviceWorkers: "block",
   },
   projects: [
     {

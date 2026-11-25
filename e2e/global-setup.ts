@@ -19,6 +19,7 @@ export default async function globalSetup(): Promise<void> {
       attempts += 1
       try {
         const response = await api.get("/actuator/health", {
+          maxRedirects: 0,
           timeout: Math.min(REQUEST_TIMEOUT_MS, Math.max(1, deadline - Date.now())),
         })
         const body = await response.json().catch(() => null) as { status?: unknown } | null

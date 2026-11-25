@@ -29,15 +29,27 @@ export async function withSelectOptions(trigger: Locator, inspect: (popup: Locat
 }
 
 /** Select popups are portaled outside their form/dialog. */
-export async function selectPopupOption(trigger: Locator, label: string): Promise<void> {
+export async function selectPopupOption(trigger: Locator, label: string | RegExp): Promise<void> {
   const popup = await openSelectOptions(trigger)
   const option = popup.getByRole("option", { name: label, exact: true })
   await expect(option).toBeVisible()
   await expect(option).toBeEnabled()
+  const selectedLabel = typeof label === "string" ? label : (await option.innerText()).trim()
   await option.click()
   await expect(trigger).toHaveAttribute("aria-expanded", "false")
   await expect(popup).toBeHidden()
-  await expect(trigger).toContainText(label)
+  if (typeof label === "string") {
+    await expect(trigger).toContainText(label)
+    return
+  }
+
+  const value = trigger.locator('[data-slot="select-value"]')
+  if (await value.count()) {
+    await expect(value).toHaveText(selectedLabel)
+  } else {
+    // Older staging markup includes a literal chevron in the trigger text.
+    await expect.poll(async () => (await trigger.innerText()).replace(/\s*▼\s*$/, "").trim()).toBe(selectedLabel)
+  }
 }
 
 /** The same tree drives both Maintenance and Supply. */
