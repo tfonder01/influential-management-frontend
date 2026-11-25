@@ -7,14 +7,17 @@ import { useAuth } from "@/lib/auth"
 import { rootRouteDecision } from "@/lib/auth-navigation"
 
 export default function HomePage() {
-  const { isProductionMode, status } = useAuth()
+  const { isProductionMode, status, user } = useAuth()
   const router = useRouter()
   const decision = rootRouteDecision(isProductionMode, status)
 
   useEffect(() => {
-    if (decision === "dashboard") router.replace("/dashboard")
+    if (decision === "dashboard") {
+      if (user?.role === "MAINTENANCE") router.replace("/maintenance")
+      else router.replace("/dashboard")
+    }
     if (decision === "login") router.replace("/login")
-  }, [decision, router])
+  }, [decision, router, user?.role])
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background" aria-label="Opening portal">

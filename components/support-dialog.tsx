@@ -54,7 +54,7 @@ const TYPE_OPTIONS: Array<{
 export const SupportDialog = forwardRef<SupportDialogHandle>(function SupportDialog(_, ref) {
   const [state, dispatch] = useReducer(supportFormReducer, initialSupportFormState)
   const pathname = usePathname()
-  const { locations, isDemoMode } = useApp()
+  const { locations, isDemoMode, role } = useApp()
   const { startManualTour } = useOnboarding()
 
   useImperativeHandle(ref, () => ({ open: () => dispatch({ type: "OPEN" }) }), [])
@@ -141,13 +141,13 @@ export const SupportDialog = forwardRef<SupportDialogHandle>(function SupportDia
               </DialogDescription>
             </DialogHeader>
 
-            <div className="mt-5 flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border bg-muted/25 p-3">
+            {role !== "maintenance" && <div className="mt-5 flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border bg-muted/25 p-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium">Product walkthrough</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">Replay the tour for your current role.</p>
               </div>
               <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={previewTour}>Restart</Button>
-            </div>
+            </div>}
 
             <fieldset className="mt-5 min-w-0 max-w-full">
               <legend className="text-sm font-medium text-foreground">Type</legend>

@@ -48,7 +48,15 @@ export function loginHrefFor(returnTo: string): string {
   return safeReturnTo ? `/login?returnTo=${encodeURIComponent(safeReturnTo)}` : "/login"
 }
 
-export function authenticatedDestination(search: string): string {
+export function maintenanceRouteAllowed(pathname: string): boolean {
+  return /^\/maintenance(?:\/[^/]+)?\/?$/.test(pathname) || /^\/settings\/?$/.test(pathname)
+}
+
+export function authenticatedDestination(search: string, role?: string): string {
   const returnTo = new URLSearchParams(search).get("returnTo")
-  return safeInternalReturnTo(returnTo) ?? DEFAULT_AUTHENTICATED_ROUTE
+  const safe = safeInternalReturnTo(returnTo)
+  if (role === "MAINTENANCE") {
+    return safe && maintenanceRouteAllowed(new URL(safe, INTERNAL_ORIGIN).pathname) ? safe : "/maintenance"
+  }
+  return safe ?? DEFAULT_AUTHENTICATED_ROUTE
 }

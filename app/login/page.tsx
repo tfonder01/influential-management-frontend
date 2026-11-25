@@ -52,7 +52,7 @@ function describeLoginFailure(cause: unknown): string {
 }
 
 export default function LoginPage() {
-  const { login, status, isProductionMode } = useAuth()
+  const { login, status, isProductionMode, user } = useAuth()
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -66,9 +66,9 @@ export default function LoginPage() {
   useEffect(() => {
     setResetComplete(new URLSearchParams(window.location.search).get("reset") === "success")
     if (!isProductionMode || status === "authenticated") {
-      router.replace(authenticatedDestination(window.location.search))
+      router.replace(authenticatedDestination(window.location.search, user?.role))
     }
-  }, [isProductionMode, status, router])
+  }, [isProductionMode, status, router, user?.role])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -79,8 +79,8 @@ export default function LoginPage() {
     setError("")
     setSubmitting(true)
     try {
-      await login(email, password)
-      router.replace(authenticatedDestination(window.location.search))
+      const signedIn = await login(email, password)
+      router.replace(authenticatedDestination(window.location.search, signedIn.role))
     } catch (cause) {
       setError(describeLoginFailure(cause))
       setSubmitting(false)

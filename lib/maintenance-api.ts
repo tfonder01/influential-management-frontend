@@ -85,7 +85,7 @@ const CLASSROOM_FROM_API: Record<string, ClassroomAgeGroup> = Object.fromEntries
   Object.entries(CLASSROOM_TO_API).map(([label, api]) => [api, label as ClassroomAgeGroup])
 )
 
-export type ApiMaintenanceAttachmentType = "ISSUE_PHOTO" | "COMPLETION_PHOTO" | "INVOICE" | "OTHER"
+export type ApiMaintenanceAttachmentType = "ISSUE_PHOTO" | "COMPLETION_PHOTO" | "INVOICE" | "OTHER" | "SUPPORTING_DOCUMENT"
 
 export interface ApiMaintenanceSummary {
   id: string
@@ -225,6 +225,8 @@ export function maintenanceDetailFromApi(record: ApiMaintenanceDetail): Maintena
       originalPhotos,
       completionPhotos,
       invoices,
+      supportingDocuments: record.attachments.filter(({ attachmentType }) => attachmentType === "SUPPORTING_DOCUMENT")
+        .map((attachment) => attachmentToUiAttachment(attachment, uploadedBy)),
     },
     attachments: record.attachments,
     commentCount: record.commentCount,
@@ -262,6 +264,12 @@ export interface ListMaintenanceRequestsParams {
   size?: number
 }
 
+export async function uploadMaintenanceFile(id: string, file: File, type: ApiMaintenanceAttachmentType) {
+  const body = new FormData()
+  body.append("file", file)
+  await apiClient.request(`/api/maintenance/${id}/attachments/upload?attachmentType=${type}`, { method: "POST", body })
+}
+
 export async function listMaintenanceRequests(params: ListMaintenanceRequestsParams = {}): Promise<MaintenanceRequest[]> {
   const query = new URLSearchParams()
   if (params.locationId) query.set("locationId", params.locationId)
@@ -277,7 +285,8 @@ export async function listMaintenanceRequests(params: ListMaintenanceRequestsPar
   return page.content.map(maintenanceRequestFromApi)
 }
 
-export async function listAllMaintenanceRequests(): Promise<MaintenanceRequest[]> {
+export async function listAllMaintenanceRequests(includeArchived = true): Promise<MaintenanceRequest[]> {
+  if (!includeArchived) return listMaintenanceRequests({ archived: false })
   const [active, archived] = await Promise.all([
     listMaintenanceRequests({ archived: false }),
     listMaintenanceRequests({ archived: true }),

@@ -18,7 +18,7 @@ import {
   getDashboardSummaryApi,
   type DashboardSummary,
 } from "./dashboard-api"
-import { preferNewestServerState } from "./server-state"
+import { mergeMaintenanceSummaries, preferNewestServerState, upsertMaintenanceDetail } from "./server-state"
 import {
   RECORDS as INITIAL_RECORDS,
   COMMENTS as INITIAL_COMMENTS,
@@ -119,31 +119,6 @@ function mergeRecordSummaries(previous: ComplianceRecord[], summaries: Complianc
   })
 }
 
-function mergeMaintenanceSummaries(previous: MaintenanceRequest[], summaries: MaintenanceRequest[]): MaintenanceRequest[] {
-  const previousById = new Map(previous.map((request) => [request.id, request]))
-  return summaries.map((summary) => {
-    const detail = previousById.get(summary.id)
-    if (!detail) return summary
-    const newest = preferNewestServerState(detail, summary)
-    if (newest === detail) return detail
-    return {
-      ...summary,
-      description: detail.description,
-      approvalNote: detail.approvalNote,
-      vendorContact: detail.vendorContact,
-      originalPhotos: detail.originalPhotos,
-      completionPhotos: detail.completionPhotos,
-      invoices: detail.invoices,
-      assetName: detail.assetName,
-      assetType: detail.assetType,
-      repeatIssueKey: detail.repeatIssueKey,
-      repeatRepairCount: detail.repeatRepairCount,
-      repeatRecordedCost: detail.repeatRecordedCost,
-      repeatRepairPeriodMonths: detail.repeatRepairPeriodMonths,
-    }
-  })
-}
-
 function mergeSupplySummaries(previous: SupplyRequest[], summaries: SupplyRequest[]): SupplyRequest[] {
   const previousById = new Map(previous.map((request) => [request.id, request]))
   return summaries.map((summary) => {
@@ -197,6 +172,7 @@ interface AppState {
   maintenanceRequestsError: string | null
   refreshMaintenanceRequests: () => Promise<void>
   upsertMaintenanceRequest: (request: MaintenanceRequest) => void
+  removeMaintenanceRequest: (id: string) => void
   loadMaintenanceComments: (recordId: string) => Promise<void>
   createProductionMaintenanceRequest: (input: CreateMaintenanceInput) => Promise<MaintenanceRequest>
   updateProductionMaintenanceRequest: (id: string, input: UpdateMaintenanceInput) => Promise<MaintenanceRequest>
@@ -258,6 +234,7 @@ const AppContext = createContext<AppState | null>(null)
 export function AppProvider({ children, productionUser }: { children: React.ReactNode; productionUser?: SessionUser | null }) {
   const productionMode = Boolean(productionUser)
   const productionRole = productionUser?.role.toLowerCase() as Role | undefined
+  const worker = productionRole === "maintenance"
   const [role, setRoleState] = useState<Role>(productionRole ?? "owner")
 
   useEffect(() => {
@@ -319,7 +296,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       : allRecords.filter((record) => record.locationId === currentUser.locationId)
 
   const refreshRecords = useCallback(async () => {
-    if (!productionMode) return
+    if (!productionMode || worker) return
     setRecordsLoading(true)
     setRecordsError(null)
     try {
@@ -330,10 +307,10 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     } finally {
       setRecordsLoading(false)
     }
-  }, [productionMode])
+  }, [productionMode, worker])
 
   useEffect(() => {
-    if (!productionMode) return
+    if (!productionMode || worker) return
     let cancelled = false
     setRecordsLoading(true)
     listAllRecords()
@@ -343,9 +320,9 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       .catch((error) => { if (!cancelled) setRecordsError(productionErrorMessage(error, "Failed to load records")) })
       .finally(() => { if (!cancelled) setRecordsLoading(false) })
     return () => { cancelled = true }
-  }, [productionMode])
+  }, [productionMode, worker])
   useEffect(() => {
-    if (!productionMode) return
+    if (!productionMode || worker) return
     let cancelled = false
     setSupplyRequestsLoading(true)
     listAllSupplyRequests()
@@ -353,7 +330,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
       .catch((error) => { if (!cancelled) setSupplyRequestsError(productionErrorMessage(error, "Failed to load supply requests")) })
       .finally(() => { if (!cancelled) setSupplyRequestsLoading(false) })
     return () => { cancelled = true }
-  }, [productionMode])
+  }, [productionMode, worker])
 
   const upsertRecord = useCallback((record: ComplianceRecord) => {
     setProductionRecords((prev) => {
@@ -370,17 +347,20 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     setMaintenanceRequestsLoading(true)
     setMaintenanceRequestsError(null)
     try {
-      const requests = await listAllMaintenanceRequests()
+      const requests = await listAllMaintenanceRequests(!worker)
       setProductionMaintenanceRequests((previous) => mergeMaintenanceSummaries(previous, requests))
     } catch (error) {
+      if (worker && isApiClientError(error) && (error.status === 401 || error.status === 403)) {
+        setProductionMaintenanceRequests([])
+      }
       setMaintenanceRequestsError(productionErrorMessage(error, "Failed to load maintenance requests"))
     } finally {
       setMaintenanceRequestsLoading(false)
     }
-  }, [productionMode])
+  }, [productionMode, worker])
 
   const refreshSupplyRequests = useCallback(async () => {
-    if (!productionMode) return
+    if (!productionMode || worker) return
     setSupplyRequestsLoading(true)
     setSupplyRequestsError(null)
     try {
@@ -391,33 +371,35 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     } finally {
       setSupplyRequestsLoading(false)
     }
-  }, [productionMode])
+  }, [productionMode, worker])
 
   useEffect(() => {
     if (!productionMode) return
     let cancelled = false
     setMaintenanceRequestsLoading(true)
-    listAllMaintenanceRequests()
+    listAllMaintenanceRequests(!worker)
       .then((requests) => {
         if (!cancelled) setProductionMaintenanceRequests((previous) => mergeMaintenanceSummaries(previous, requests))
       })
       .catch((error) => {
-        if (!cancelled) setMaintenanceRequestsError(productionErrorMessage(error, "Failed to load maintenance requests"))
+        if (cancelled) return
+        if (worker && isApiClientError(error) && (error.status === 401 || error.status === 403)) {
+          setProductionMaintenanceRequests([])
+        }
+        setMaintenanceRequestsError(productionErrorMessage(error, "Failed to load maintenance requests"))
       })
       .finally(() => {
         if (!cancelled) setMaintenanceRequestsLoading(false)
       })
     return () => { cancelled = true }
-  }, [productionMode])
+  }, [productionMode, worker])
 
   const upsertMaintenanceRequest = useCallback((request: MaintenanceRequest) => {
-    setProductionMaintenanceRequests((prev) => {
-      const index = prev.findIndex((existing) => existing.id === request.id)
-      if (index === -1) return [request, ...prev]
-      const next = [...prev]
-      next[index] = { ...next[index], ...request }
-      return next
-    })
+    setProductionMaintenanceRequests((previous) => upsertMaintenanceDetail(previous, request))
+  }, [])
+
+  const removeMaintenanceRequest = useCallback((id: string) => {
+    setProductionMaintenanceRequests((previous) => previous.filter((request) => request.id !== id))
   }, [])
 
   const upsertSupplyRequest = useCallback((request: SupplyRequest) => {
@@ -448,7 +430,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
   )
 
   const refreshDashboardSummary = useCallback(async () => {
-    if (!productionMode) return
+    if (!productionMode || worker) return
     setDashboardSummaryLoading(true)
     setDashboardSummaryError(null)
     try {
@@ -458,12 +440,12 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
     } finally {
       setDashboardSummaryLoading(false)
     }
-  }, [productionMode])
+  }, [productionMode, worker])
 
   useEffect(() => {
-    if (!productionMode) return
+    if (!productionMode || worker) return
     void refreshDashboardSummary()
-  }, [productionMode, productionRecords, productionMaintenanceRequests, productionSupplyRequests, refreshDashboardSummary])
+  }, [productionMode, worker, productionRecords, productionMaintenanceRequests, productionSupplyRequests, refreshDashboardSummary])
 
   const visibleRecordIds = new Set(records.map((record) => record.id))
   const visibleMaintenanceIds = new Set(maintenanceRequests.map((request) => request.id))
@@ -1450,6 +1432,7 @@ export function AppProvider({ children, productionUser }: { children: React.Reac
         maintenanceRequestsError,
         refreshMaintenanceRequests,
         upsertMaintenanceRequest,
+        removeMaintenanceRequest,
         loadMaintenanceComments,
         createProductionMaintenanceRequest,
         updateProductionMaintenanceRequest,

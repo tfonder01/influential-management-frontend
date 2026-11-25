@@ -70,7 +70,7 @@ test("Maintenance preserves its three workflow groups with shared rows, uploads,
   assert.match(maintenanceSource, /emptyLabel: "No original photos attached\."/)
   assert.match(maintenanceSource, /emptyLabel: "No completion photos attached\."/)
   assert.match(maintenanceSource, /emptyLabel: "No invoices attached\."/)
-  assert.match(maintenanceSource, /canEdit && \(\s*<AttachmentUploadControl/)
+  assert.match(maintenanceSource, /canParticipate && \(\s*<AttachmentUploadControl/)
   assert.match(maintenanceSource, /handleDownloadAttachment\(item\)/)
   assert.match(maintenanceSource, /handleOpenInNewTab\(item\)/)
 })

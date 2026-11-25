@@ -51,6 +51,7 @@ function SummaryCard({ label, value, icon: Icon, accent }: { label: string; valu
 export default function MaintenancePage() {
   const {
     maintenanceRequests,
+    role,
     maintenanceRequestsLoading,
     maintenanceRequestsError,
     refreshMaintenanceRequests,
@@ -113,11 +114,11 @@ export default function MaintenancePage() {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><Wrench className="h-4.5 w-4.5" /></div>
             <div>
               <h2 className="text-lg font-semibold text-foreground">Maintenance</h2>
-              <p className="text-sm text-muted-foreground">Report issues, route approvals, and preserve repair and cost history.</p>
+              <p className="text-sm text-muted-foreground">{role === "maintenance" ? "Track repairs and update requests at your assigned locations." : "Report issues, route approvals, and preserve repair and cost history."}</p>
             </div>
           </div>
         </div>
-        <Button className="gap-2 sm:shrink-0" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" />New Maintenance Request</Button>
+        {role !== "maintenance" && <Button className="gap-2 sm:shrink-0" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" />New Maintenance Request</Button>}
       </div>
 
       {!isDemoMode && maintenanceRequestsError && (

@@ -11,7 +11,8 @@ export interface CommentMention {
   displayName: string
 }
 
-export function listMentionableUsers(locationId: string): Promise<MentionableUser[]> {
+export function listMentionableUsers(locationId: string, maintenanceRequestId?: string): Promise<MentionableUser[]> {
+  if (maintenanceRequestId) return apiClient.request<MentionableUser[]>(`/api/maintenance/${maintenanceRequestId}/mentionable-users`)
   const query = new URLSearchParams({ locationId })
   return apiClient.request<MentionableUser[]>(`/api/users/mentionable?${query}`)
 }

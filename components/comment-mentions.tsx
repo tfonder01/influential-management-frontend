@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils"
 
 interface MentionCommentComposerProps {
   locationId: string
+  maintenanceRequestId?: string
   value: string
   onChange: (value: string) => void
   onSubmit: (mentionedUserIds: string[]) => void | Promise<void>
@@ -33,10 +34,12 @@ const ROLE_TO_API: Record<Role, MentionableUser["role"]> = {
   owner: "OWNER",
   director: "DIRECTOR",
   assistant_director: "ASSISTANT_DIRECTOR",
+  maintenance: "MAINTENANCE",
 }
 
 export function MentionCommentComposer({
   locationId,
+  maintenanceRequestId,
   value,
   onChange,
   onSubmit,
@@ -63,12 +66,12 @@ export function MentionCommentComposer({
     }
     let cancelled = false
     setLoading(true)
-    listMentionableUsers(locationId)
+    listMentionableUsers(locationId, maintenanceRequestId)
       .then((result) => { if (!cancelled) setUsers(result) })
       .catch(() => { if (!cancelled) setUsers([]) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [currentUserId, isDemoMode, locationId])
+  }, [currentUserId, isDemoMode, locationId, maintenanceRequestId])
 
   useEffect(() => {
     if (!value) setSelectedUsers(new Map())

@@ -1,3 +1,5 @@
+import type { MaintenanceRequest } from "./types"
+
 export interface VersionedServerState {
   id: string
   lastUpdated: string
@@ -25,4 +27,38 @@ export function preferNewestServerState<T extends VersionedServerState>(
   }
 
   return incoming
+}
+
+export function mergeMaintenanceSummaries(previous: MaintenanceRequest[], summaries: MaintenanceRequest[]): MaintenanceRequest[] {
+  const previousById = new Map(previous.map((request) => [request.id, request]))
+  return summaries.map((summary) => {
+    const detail = previousById.get(summary.id)
+    if (!detail) return summary
+    const newest = preferNewestServerState(detail, summary)
+    if (newest === detail) return detail
+    return {
+      ...summary,
+      description: detail.description,
+      approvalNote: detail.approvalNote,
+      vendorContact: detail.vendorContact,
+      originalPhotos: detail.originalPhotos,
+      completionPhotos: detail.completionPhotos,
+      invoices: detail.invoices,
+      supportingDocuments: detail.supportingDocuments,
+      assetName: detail.assetName,
+      assetType: detail.assetType,
+      repeatIssueKey: detail.repeatIssueKey,
+      repeatRepairCount: detail.repeatRepairCount,
+      repeatRecordedCost: detail.repeatRecordedCost,
+      repeatRepairPeriodMonths: detail.repeatRepairPeriodMonths,
+    }
+  })
+}
+
+export function upsertMaintenanceDetail(previous: MaintenanceRequest[], detail: MaintenanceRequest): MaintenanceRequest[] {
+  const index = previous.findIndex(({ id }) => id === detail.id)
+  if (index === -1) return [detail, ...previous]
+  const next = [...previous]
+  next[index] = { ...previous[index], ...detail, supportingDocuments: detail.supportingDocuments }
+  return next
 }

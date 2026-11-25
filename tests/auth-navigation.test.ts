@@ -35,6 +35,16 @@ test("successful login returns to a safe internal deep link", () => {
   )
 })
 
+test("Maintenance Only returns to Maintenance or personal Settings", () => {
+  assert.equal(authenticatedDestination("", "MAINTENANCE"), "/maintenance")
+  assert.equal(authenticatedDestination("?returnTo=%2Fmaintenance%2Ftest", "MAINTENANCE"), "/maintenance/test")
+  assert.equal(authenticatedDestination("?returnTo=%2Fsettings", "MAINTENANCE"), "/settings")
+  for (const path of ["/dashboard", "/supply-requests", "/maintenance-extra", "/maintenance/test/hidden", "/admin/users"]) {
+    assert.equal(authenticatedDestination(`?returnTo=${encodeURIComponent(path)}`, "MAINTENANCE"), "/maintenance")
+  }
+  assert.equal(authenticatedDestination("?returnTo=%2Fdashboard", "DIRECTOR"), "/dashboard")
+})
+
 test("external and malformed return destinations are rejected", () => {
   for (const candidate of [
     "https://evil.example/steal",

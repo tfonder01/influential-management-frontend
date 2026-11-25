@@ -413,8 +413,8 @@ export async function renameRecordAttachmentApi(recordId: string, fileId: string
 }
 
 /** Downloads an authorized file and triggers a browser save, without ever exposing a public storage URL. */
-export async function downloadFileApi(fileId: string, filename: string): Promise<void> {
-  const blob = await apiClient.requestBlob(`/api/files/${fileId}/content`)
+export async function downloadFileApi(fileId: string, filename: string, contentPath = `/api/files/${fileId}/content`): Promise<void> {
+  const blob = await apiClient.requestBlob(contentPath)
   const url = URL.createObjectURL(blob)
   const link = document.createElement("a")
   link.href = url
@@ -431,8 +431,8 @@ export async function downloadFileApi(fileId: string, filename: string): Promise
  * the caller can render a preview without ever exposing a public storage URL. The caller owns the
  * returned object URL and must revoke it (e.g. `URL.revokeObjectURL`) once the preview is closed.
  */
-export async function viewFileApi(fileId: string): Promise<{ url: string; contentType: string }> {
-  const blob = await apiClient.requestBlob(`/api/files/${fileId}/content?disposition=inline`)
+export async function viewFileApi(fileId: string, contentPath = `/api/files/${fileId}/content`): Promise<{ url: string; contentType: string }> {
+  const blob = await apiClient.requestBlob(`${contentPath}?disposition=inline`)
   return { url: URL.createObjectURL(blob), contentType: blob.type }
 }
 

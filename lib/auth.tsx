@@ -1,14 +1,14 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
-import { apiClient, type SessionUser } from "./api-client"
+import { apiClient, ApiClientError, type SessionUser } from "./api-client"
 import type { AuthStatus } from "./auth-navigation"
 
 interface AuthContextValue {
   status: AuthStatus
   user: SessionUser | null
   isProductionMode: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<SessionUser>
   logout: () => Promise<void>
   refreshSession: () => Promise<void>
 }
@@ -28,14 +28,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isProductionAuthMode) return
+    const unsubscribe = apiClient.onSessionRefresh(setUser)
     refreshSession().catch(() => { setUser(null); setStatus("anonymous") })
+    return unsubscribe
   }, [refreshSession])
 
   const login = useCallback(async (email: string, password: string) => {
     const session = await apiClient.login(email, password)
     setUser(session.user)
     setStatus("authenticated")
+    return session.user
   }, [])
+
+  useEffect(() => {
+    if (!isProductionAuthMode || status !== "authenticated") return
+    let active = true
+    const synchronize = () => {
+      void apiClient.request<SessionUser>("/api/auth/me").then((current) => {
+        if (active) setUser(current)
+      }).catch((error: unknown) => {
+        if (active && error instanceof ApiClientError && error.status === 401) {
+          setUser(null)
+          setStatus("anonymous")
+        }
+      })
+    }
+    window.addEventListener("focus", synchronize)
+    return () => {
+      active = false
+      window.removeEventListener("focus", synchronize)
+    }
+  }, [status])
 
   const logout = useCallback(async () => {
     await apiClient.logout()

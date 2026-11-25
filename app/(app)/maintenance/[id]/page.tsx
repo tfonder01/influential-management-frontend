@@ -72,6 +72,8 @@ import { cn } from "@/lib/utils"
 import { hasPotentialRepeatHistory } from "@/lib/maintenance-history"
 import { maintenanceDisplayId } from "@/lib/maintenance-display"
 import { roleLabel } from "@/lib/role-labels"
+import { uploadMaintenanceFile } from "@/lib/maintenance-api"
+import { apiClient } from "@/lib/api-client"
 import { listActivity, type ApiActivityItem } from "@/lib/activity-api"
 import { listAssignableUsers, type MentionableUser } from "@/lib/mentions-api"
 import {
@@ -103,6 +105,7 @@ const ROLE_TO_API: Record<Role, MentionableUser["role"]> = {
   owner: "OWNER",
   director: "DIRECTOR",
   assistant_director: "ASSISTANT_DIRECTOR",
+  maintenance: "MAINTENANCE",
 }
 const timelineIcons: Record<string, React.ElementType> = {
   created: Wrench,
@@ -124,10 +127,11 @@ function timelineIconFor(action: string): React.ElementType {
   if (action.includes("CREATED")) return Wrench
   return Building2
 }
-const ATTACHMENT_TYPES: Record<"originalPhotos" | "completionPhotos" | "invoices", ApiMaintenanceAttachmentType> = {
+const ATTACHMENT_TYPES: Record<"originalPhotos" | "completionPhotos" | "invoices" | "supportingDocuments", ApiMaintenanceAttachmentType> = {
   originalPhotos: "ISSUE_PHOTO",
   completionPhotos: "COMPLETION_PHOTO",
   invoices: "INVOICE",
+  supportingDocuments: "SUPPORTING_DOCUMENT",
 }
 
 function Meta({ icon: Icon, label, children }: { icon: React.ElementType; label: string; children: React.ReactNode }) {
@@ -153,6 +157,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     showToast,
     isDemoMode,
     upsertMaintenanceRequest,
+    removeMaintenanceRequest,
     loadMaintenanceComments,
     updateProductionMaintenanceRequest,
     changeProductionMaintenanceStatus,
@@ -168,6 +173,8 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     replaceProductionMaintenanceAttachment,
     renameProductionMaintenanceAttachment,
   } = useApp()
+  const worker = role === "maintenance"
+  const attachmentContentPath = (fileId: string) => worker ? `/api/maintenance/${id}/attachments/${fileId}/content` : undefined
   const router = useRouter()
   const request = maintenanceRequests.find((item) => item.id === id)
   const [commentText, setCommentText] = useState("")
@@ -180,7 +187,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
   const [renameTarget, setRenameTarget] = useState<MaintenanceAttachment | null>(null)
   const [renameValue, setRenameValue] = useState("")
   const [renameSubmitting, setRenameSubmitting] = useState(false)
-  const [replaceContext, setReplaceContext] = useState<{ attachment: MaintenanceAttachment; field: "originalPhotos" | "completionPhotos" | "invoices"; accept: string } | null>(null)
+  const [replaceContext, setReplaceContext] = useState<{ attachment: MaintenanceAttachment; field: "originalPhotos" | "completionPhotos" | "invoices" | "supportingDocuments"; accept: string } | null>(null)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
   const [archiveSubmitting, setArchiveSubmitting] = useState(false)
@@ -225,10 +232,10 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     setScheduledDate(request.scheduledDate ?? "")
     setEstimatedCost(request.estimatedCost?.toString() ?? "")
     setFinalCost(request.finalCost?.toString() ?? "")
-  }, [isDemoMode, request])
+  }, [isDemoMode, request, worker])
 
   useEffect(() => {
-    if (!request) return
+    if (!request || worker) return
     if (isDemoMode) {
       setAssignableUsers(USERS
         .filter((user) => user.role === "owner" || user.locationId === request.locationId)
@@ -250,14 +257,16 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
       })
       .finally(() => { if (!cancelled) setAssignableUsersLoading(false) })
     return () => { cancelled = true }
-  }, [isDemoMode, request])
+  }, [isDemoMode, request, worker])
 
   const refreshMaintenanceActivity = useCallback(async () => {
     if (isDemoMode) return
     setActivityLoading(true)
     setActivityError("")
     try {
-      const page = await listActivity({
+      const page = worker
+        ? await apiClient.request<{ content: ApiActivityItem[] }>(`/api/maintenance/${id}/activity?size=100`)
+        : await listActivity({
         module: "MAINTENANCE",
         entityType: "MAINTENANCE_REQUEST",
         entityId: id,
@@ -269,7 +278,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     } finally {
       setActivityLoading(false)
     }
-  }, [id, isDemoMode])
+  }, [id, isDemoMode, worker])
 
   const requestCommentVersion = comments
     .filter((comment) => comment.recordId === id)
@@ -296,6 +305,9 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
       })
       .catch((error) => {
         if (cancelled) return
+        if (worker && isApiClientError(error) && [401, 403, 404].includes(error.status)) {
+          removeMaintenanceRequest(id)
+        }
         setDetailError(isApiClientError(error) ? error.message : "This maintenance request could not be loaded.")
       })
       .finally(() => {
@@ -304,7 +316,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     void loadMaintenanceComments(id)
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, isDemoMode])
+  }, [id, isDemoMode, worker])
 
   if (!isDemoMode && (detailLoading || (maintenanceRequestsLoading && !request))) {
     return (
@@ -345,9 +357,10 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     || normalizeDate(scheduledDate) !== normalizeDate(request.scheduledDate)
     || normalizeCost(estimatedCost) !== normalizeCost(request.estimatedCost)
     || normalizeCost(finalCost) !== normalizeCost(request.finalCost)
-  const canEdit = !request.archived
+  const canParticipate = !request.archived
+  const canEdit = canParticipate && !worker
   const canManageAttachments = !isDemoMode && canEdit
-  const canChangeProgress = canEdit
+  const canChangeProgress = canParticipate
     && request.approvalStatus !== "Awaiting Approval"
     && request.approvalStatus !== "Needs Information"
     && request.approvalStatus !== "Declined"
@@ -561,19 +574,24 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     }
   }
 
-  const fileHandler = (field: "originalPhotos" | "completionPhotos" | "invoices") => async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const fileHandler = (field: "originalPhotos" | "completionPhotos" | "invoices" | "supportingDocuments") => async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ""
     if (!file || attachmentAction) return
     if (isDemoMode) {
-      addMaintenanceFile(id, field, file.name)
+      if (field !== "supportingDocuments") addMaintenanceFile(id, field, file.name)
       return
     }
     setAttachmentAction(field)
     setAttachmentError("")
     try {
-      const uploaded = await uploadFileApi(file, request.locationId)
-      await addProductionMaintenanceAttachment(id, uploaded.id, ATTACHMENT_TYPES[field])
+      if (worker || field === "supportingDocuments") {
+        await uploadMaintenanceFile(id, file, ATTACHMENT_TYPES[field])
+        upsertMaintenanceRequest((await getMaintenanceDetail(id)).request)
+      } else {
+        const uploaded = await uploadFileApi(file, request.locationId)
+        await addProductionMaintenanceAttachment(id, uploaded.id, ATTACHMENT_TYPES[field])
+      }
     } catch (error) {
       setAttachmentError(isApiClientError(error) ? error.message : "Attachment upload failed. Please try again.")
     } finally {
@@ -621,7 +639,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
       return
     }
     try {
-      const { url } = await viewFileApi(attachment.fileId)
+      const { url } = await viewFileApi(attachment.fileId, attachmentContentPath(attachment.fileId))
       window.open(url, "_blank", "noopener")
     } catch (error) {
       showToast(isApiClientError(error) ? error.message : "Unable to open file. Please try again.")
@@ -634,7 +652,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
       return
     }
     try {
-      await downloadFileApi(attachment.fileId, attachment.displayName ?? attachment.name)
+      await downloadFileApi(attachment.fileId, attachment.displayName ?? attachment.name, attachmentContentPath(attachment.fileId))
     } catch (error) {
       showToast(isApiClientError(error) ? error.message : "Download failed. Please try again.")
     }
@@ -661,7 +679,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
 
   const handleReplaceAttachment = async (
     attachment: MaintenanceAttachment,
-    field: "originalPhotos" | "completionPhotos" | "invoices",
+    field: "originalPhotos" | "completionPhotos" | "invoices" | "supportingDocuments",
     file: File
   ) => {
     if (!attachment.fileId || fileActionKey || !request) return
@@ -681,7 +699,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
     setRenameValue(attachment.displayName ?? attachment.name)
   }
 
-  const triggerReplace = (attachment: MaintenanceAttachment, field: "originalPhotos" | "completionPhotos" | "invoices", accept: string) => {
+  const triggerReplace = (attachment: MaintenanceAttachment, field: "originalPhotos" | "completionPhotos" | "invoices" | "supportingDocuments", accept: string) => {
     setReplaceContext({ attachment, field, accept })
     // The input's accept attribute is applied on the next render; defer the click one tick.
     requestAnimationFrame(() => replaceInputRef.current?.click())
@@ -795,16 +813,17 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
 
           <section className="order-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <AttachmentSectionHeader
-              title="Photos and invoices"
-              helper={isDemoMode ? "Prototype attachments preserve filenames and upload history." : "Original evidence, completion evidence, and invoices attached to this maintenance request."}
-              count={request.originalPhotos.length + request.completionPhotos.length + request.invoices.length}
+              title={worker ? "Attachments" : "Photos and invoices"}
+              helper={isDemoMode ? "Prototype attachments preserve filenames and upload history." : worker ? "Issue photos, completion photos, and supporting documents." : "Original evidence, completion evidence, and invoices attached to this maintenance request."}
+              count={request.originalPhotos.length + request.completionPhotos.length + (worker ? 0 : request.invoices.length) + (request.supportingDocuments?.length ?? 0)}
             />
             {attachmentError && <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50/70 px-3 py-2.5 text-sm text-red-700">{attachmentError}</div>}
             <div className="mt-4 grid gap-3">
               {[
                 { title: "Original photos", field: "originalPhotos" as const, items: request.originalPhotos, icon: Camera, accept: "image/*", uploadLabel: "Add Original Photo", emptyLabel: "No original photos attached." },
                 { title: "Completion photos", field: "completionPhotos" as const, items: request.completionPhotos, icon: ImageIcon, accept: "image/*", uploadLabel: "Add Completion Photo", emptyLabel: "No completion photos attached." },
-                { title: "Invoices", field: "invoices" as const, items: request.invoices, icon: FileText, accept: ".pdf,image/*", uploadLabel: "Add Invoice", emptyLabel: "No invoices attached." },
+                ...(!worker ? [{ title: "Invoices", field: "invoices" as const, items: request.invoices, icon: FileText, accept: ".pdf,image/*", uploadLabel: "Add Invoice", emptyLabel: "No invoices attached." }] : []),
+                ...(worker || request.supportingDocuments?.length ? [{ title: "Supporting documents", field: "supportingDocuments" as const, items: request.supportingDocuments ?? [], icon: FileText, accept: ".pdf,image/jpeg,image/png", uploadLabel: "Add Supporting Document", emptyLabel: "No supporting documents attached." }] : []),
               ].map(({ title, field, items, icon: Icon, accept, uploadLabel, emptyLabel }) => (
                 <AttachmentGroup key={field} title={title} count={items.length} icon={Icon}>
                   <div className="mt-3 space-y-1.5">
@@ -843,7 +862,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
                     })}
                     {items.length === 0 && <AttachmentEmptyState>{emptyLabel}</AttachmentEmptyState>}
                   </div>
-                  {canEdit && (
+                  {canParticipate && (
                     <AttachmentUploadControl
                       label={uploadLabel}
                       accept={accept}
@@ -861,14 +880,14 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
           <section className="order-6 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-semibold text-foreground">Comments and notes <span className="font-normal text-muted-foreground">({requestComments.length})</span></h2>
             <div className="mt-4 space-y-4">{requestComments.map((comment) => <div key={comment.id} className="flex gap-3"><div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold", comment.role === "owner" ? "bg-violet-100 text-violet-700" : "bg-teal-100 text-teal-700")}>{comment.user.split(" ").map((part) => part[0]).join("")}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-baseline gap-2"><span className="text-sm font-medium text-foreground">{comment.user}</span><span className="text-[10px] text-muted-foreground">{roleLabel(comment.role)}</span><span className="ml-auto text-[10px] text-muted-foreground">{new Date(comment.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span></div><p className="mt-1 rounded-lg bg-muted/40 px-3.5 py-3 text-sm leading-relaxed text-foreground"><MentionText text={comment.text} mentions={comment.mentions} /></p></div></div>)}{requestComments.length === 0 && <p className="text-sm text-muted-foreground">No comments yet.</p>}</div>
-            {canEdit && <div className="mt-4 flex gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{currentUser.initials}</div><MentionCommentComposer locationId={request.locationId} value={commentText} onChange={setCommentText} onSubmit={addRequestComment} currentUserId={currentUser.id} isDemoMode={isDemoMode} disabled={commentSubmitting} rows={3} placeholder="Add a progress update, question, or note…" submitLabel="Add comment" /></div>}
+            {canParticipate && <div className="mt-4 flex gap-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{currentUser.initials}</div><MentionCommentComposer maintenanceRequestId={id} locationId={request.locationId} value={commentText} onChange={setCommentText} onSubmit={addRequestComment} currentUserId={currentUser.id} isDemoMode={isDemoMode} disabled={commentSubmitting} rows={3} placeholder="Add a progress update, question, or note…" submitLabel="Add comment" /></div>}
           </section>
         </div>
 
         <aside className="contents lg:block lg:space-y-5">
           <div className="order-2 space-y-3 lg:order-2">
             <div className="flex items-center gap-2 px-1"><Wrench className="h-3.5 w-3.5 text-muted-foreground" /><h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Work Details</h2></div>
-          {!request.archived && (role === "owner" || request.approvalStatus === "Needs Information" || request.approvalStatus === "Declined") && (
+          {!worker && !request.archived && (role === "owner" || request.approvalStatus === "Needs Information" || request.approvalStatus === "Declined") && (
             <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
               <h2 className="text-sm font-semibold text-foreground">Owner approval</h2>
               <p className="mt-1 text-xs text-muted-foreground">Approval is separate from repair progress.</p>
@@ -933,14 +952,14 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
               <>
                 <p className="mt-1 text-xs text-muted-foreground">Repair workflow cancelled. Its history has been preserved and it can be reopened.</p>
                 <div className="mt-3">
-                  <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={() => void reopenCancelledRequest()} disabled={!canEdit || Boolean(statusAction)}>{statusAction === "reopen-cancelled" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Reopen Maintenance Request</Button>
+                  {!worker && <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={() => void reopenCancelledRequest()} disabled={!canEdit || Boolean(statusAction)}>{statusAction === "reopen-cancelled" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Reopen Maintenance Request</Button>}
                 </div>
               </>
             ) : request.maintenanceStatus === "Completed" ? (
               <>
                 <p className="mt-1 text-xs text-muted-foreground">Repair completed{request.completedAt ? ` on ${new Date(request.completedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}` : ""}.</p>
                 <div className="mt-3">
-                  <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={() => void reopenCompletedRequest()} disabled={!canEdit || Boolean(statusAction)}>{statusAction === "reopen-completed" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Reopen Maintenance Request</Button>
+                  {!worker && <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={() => void reopenCompletedRequest()} disabled={!canEdit || Boolean(statusAction)}>{statusAction === "reopen-completed" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Reopen Maintenance Request</Button>}
                 </div>
               </>
             ) : (
@@ -955,7 +974,14 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
 
           <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-semibold text-foreground">Vendor, assignment and cost</h2>
-            <div className="mt-4 space-y-3">
+            {worker ? (
+              <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                <div><dt className="text-muted-foreground">Assigned to</dt><dd>{request.assignedTo || "Unassigned"}</dd></div>
+                <div><dt className="text-muted-foreground">Vendor</dt><dd>{request.vendor || "—"}</dd></div>
+                <div><dt className="text-muted-foreground">Vendor contact</dt><dd className="break-words">{request.vendorContact || "—"}</dd></div>
+                <div><dt className="text-muted-foreground">Scheduled date</dt><dd>{request.scheduledDate || "—"}</dd></div>
+              </dl>
+            ) : <div className="mt-4 space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="assigned-user">Assigned To <span className="font-normal text-muted-foreground">(optional)</span></Label>
                 <StandardSelect id="assigned-user" value={assignedUserId} disabled={!canEdit || savingDetails || assignableUsersLoading} onValueChange={(value) => setAssignedUserId(value)}
@@ -983,7 +1009,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
                 </div>
               </div>
               {canEdit && <Button size="sm" className="w-full gap-2" onClick={() => void saveRepairDetails()} disabled={savingDetails || !repairDetailsDirty}>{savingDetails && <Loader2 className="h-4 w-4 animate-spin" />}Save repair details</Button>}
-            </div>
+            </div>}
             <div className="mt-4 grid gap-2 border-t border-border pt-4 sm:grid-cols-3">
               <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] font-semibold uppercase text-muted-foreground">Estimated</p><p className="mt-1 text-sm font-semibold tabular-nums">{request.estimatedCost != null ? money.format(request.estimatedCost) : "—"}</p></div>
               <div className="rounded-lg bg-muted/40 p-3"><p className="text-[10px] font-semibold uppercase text-muted-foreground">Final</p><p className="mt-1 text-sm font-semibold tabular-nums">{request.finalCost != null ? money.format(request.finalCost) : "—"}</p></div>
@@ -1046,6 +1072,7 @@ export default function MaintenanceDetailPage({ params }: { params: Promise<{ id
         open={Boolean(previewFile)}
         onClose={() => setPreviewFile(null)}
         fileId={previewFile?.fileId ?? null}
+        contentPath={previewFile ? attachmentContentPath(previewFile.fileId) : undefined}
         filename={previewFile?.name ?? "Attachment preview"}
       />
 

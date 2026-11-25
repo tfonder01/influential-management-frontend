@@ -6,7 +6,7 @@ export const user = (id: string, status: AdminUser["status"]): AdminUser => ({ i
   canDeletePermanently: status === "INVITED", deleteBlockedReason: status === "INVITED" ? null : "USER_ALREADY_ACTIVATED",
   role: "DIRECTOR", locations: [{ id: "one", name: "Location one" }], createdAt: "2026-01-01" })
 
-export async function fixtures(page: Page, options: { locationName?: string; role?: "OWNER" | "DIRECTOR" } = {}) {
+export async function fixtures(page: Page, options: { locationName?: string; role?: "OWNER" | "DIRECTOR" | "MAINTENANCE" } = {}) {
   const scopedLocations = locations.map((location) => ({ ...location, name: location.id === "one" ? options.locationName ?? location.name : location.name }))
   const state = { users: [user("active", "ACTIVE"), user("invited", "INVITED"), user("disabled", "DISABLED")],
     record: { id: "history", requestNumber: 12, title: "Historical request", locationId: "one", locationName: "Location one", category: "BUILDING_FACILITY", priority: "LOW", status: "SUBMITTED",
@@ -14,16 +14,18 @@ export async function fixtures(page: Page, options: { locationName?: string; rol
       description: "Historical fixture", createdAt: "2026-01-01", updatedAt: "2026-01-01", submittedByUserId: "owner", submittedByName: "Test Owner" } as Record<string, unknown>,
     showHistory: false, deleteRequests: [] as string[], deleteGate: null as Promise<void> | null, deleteError: "", deleteStatus: 204, nextInviteId: 0,
     userRequests: [] as URL[], payloads: [] as Record<string, unknown>[], slowStatus: "", classroomRequests: [] as string[] }
+  const sessionUser = {
+    id: "owner", organizationId: "org", organizationName: "Test organization", firstName: "Test", lastName: "Owner", email: "owner@example.test",
+    role: options.role ?? "OWNER", operationalEmailNotificationsEnabled: true, locations: scopedLocations,
+    onboarding: { tourAudience: "OWNER", version: 1, status: "DISMISSED", promptRequired: false },
+  }
   await page.route("**/api/**", async (route) => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname
     if (request.method() === "OPTIONS") { await route.fulfill({ status: 204 }); return }
     let body: unknown = { content: [], totalElements: 0, totalPages: 0, number: 0 }
     let status = 200
-    if (path === "/api/auth/refresh") body = { accessToken: "local-fixture-token", expiresInSeconds: 900, tokenType: "Bearer", user: {
-      id: "owner", organizationId: "org", organizationName: "Test organization", firstName: "Test", lastName: "Owner", email: "owner@example.test",
-      role: options.role ?? "OWNER", operationalEmailNotificationsEnabled: true, locations: scopedLocations,
-      onboarding: { tourAudience: "OWNER", version: 1, status: "DISMISSED", promptRequired: false },
-    } }
+    if (path === "/api/auth/refresh") body = { accessToken: "local-fixture-token", expiresInSeconds: 900, tokenType: "Bearer", user: sessionUser }
+    else if (path === "/api/auth/me") body = sessionUser
     else if (path === "/api/dashboard/summary") body = { month: "2026-11", generatedAt: "2026-11-11", needsReview: { total: 0, records: 0, maintenance: 0, supply: 0 },
       records: { active: 0, newCount: 0, needsAttention: 0, reviewed: 0, compliance: 0, operations: 0 },
       maintenance: { open: 0, awaitingApproval: 0, inProgress: 0, completedThisMonth: 0, costThisMonth: 0 },
@@ -66,7 +68,7 @@ export async function fixtures(page: Page, options: { locationName?: string; rol
       body = { ...input, id: "ticket", requestNumber: 1, status: "SUBMITTED", approvalStatus: "NOT_REQUIRED", archived: false,
         attachments: [], area: input.area, createdAt: "2026-01-01", updatedAt: "2026-01-01" }
     } else if (path.endsWith("/notifications/unread-count")) body = { count: 0 }
-    else if (path.endsWith("/assignable") || path.endsWith("/mentionable")) body = []
+    else if (path.endsWith("/assignable") || path.endsWith("/mentionable") || path.endsWith("/mentionable-users")) body = []
     await route.fulfill({ status, json: body })
   })
   return state

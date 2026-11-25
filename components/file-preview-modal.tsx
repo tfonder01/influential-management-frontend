@@ -9,6 +9,7 @@ interface FilePreviewModalProps {
   open: boolean
   onClose: () => void
   fileId: string | null
+  contentPath?: string
   filename: string
 }
 
@@ -17,7 +18,7 @@ interface FilePreviewModalProps {
  * authorized endpoint as download (just with `disposition=inline`), so access control is always
  * identical between "View" and "Download" — this never renders a public storage URL.
  */
-export function FilePreviewModal({ open, onClose, fileId, filename }: FilePreviewModalProps) {
+export function FilePreviewModal({ open, onClose, fileId, filename, contentPath }: FilePreviewModalProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [preview, setPreview] = useState<{ url: string; contentType: string } | null>(null)
@@ -28,12 +29,12 @@ export function FilePreviewModal({ open, onClose, fileId, filename }: FilePrevie
     setLoading(true)
     setError("")
     setPreview(null)
-    viewFileApi(fileId)
+    viewFileApi(fileId, contentPath)
       .then((result) => { if (!cancelled) setPreview(result) })
       .catch((err) => { if (!cancelled) setError(isApiClientError(err) ? err.message : "This file could not be loaded.") })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [open, fileId])
+  }, [open, fileId, contentPath])
 
   // Revoke the object URL once it's no longer needed, whether the modal closes or a new file loads.
   useEffect(() => {

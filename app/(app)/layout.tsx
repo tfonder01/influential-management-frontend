@@ -90,7 +90,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
   return (
     <AuthGate>
-      <AppProvider productionUser={user}>
+      <AppProvider key={user ? `${user.id}:${user.role}:${user.locations.map(({ id }) => id).sort().join(",")}` : "demo"} productionUser={user}>
         <OnboardingProvider>
           <AppShell>{children}</AppShell>
         </OnboardingProvider>

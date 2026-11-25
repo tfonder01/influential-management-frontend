@@ -82,7 +82,9 @@ export function Sidebar({
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-0.5">
-          {NAV_ITEMS.filter((item) => !item.ownerOnly || role === "owner").map(({ label, href, icon: Icon }) => {
+          {NAV_ITEMS.filter((item) => role === "maintenance"
+            ? item.href === "/maintenance" || item.href === "/settings"
+            : !item.ownerOnly || role === "owner").map(({ label, href, icon: Icon }) => {
             const isActive = navigation.activeHref === href
             const badge = label === "Needs Review" ? needsReviewCount : null
 

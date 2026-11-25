@@ -109,8 +109,7 @@ export function Topbar({
             </DropdownMenuContent>
           </DropdownMenu>}
 
-          {/* Global create menu */}
-          <DropdownMenu>
+          {role !== "maintenance" && <DropdownMenu>
             <DropdownMenuTrigger
               render={<Button size="sm" className="gap-1.5 px-2.5 text-xs sm:px-3" aria-label="Create" />}
             >
@@ -132,7 +131,7 @@ export function Topbar({
                 New Supply Request
               </DropdownMenuItem>
             </DropdownMenuContent>
-          </DropdownMenu>
+          </DropdownMenu>}
 
           {/* Notifications */}
           <NotificationBell />
@@ -148,7 +147,7 @@ export function Topbar({
               <DropdownMenuGroup>
                 <DropdownMenuLabel>
                   <p className="text-sm font-medium">{currentUser.name}</p>
-                  <p className="text-xs text-muted-foreground capitalize">{currentUser.role}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{role === "maintenance" ? roleLabel(role) : currentUser.role}</p>
                 </DropdownMenuLabel>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />

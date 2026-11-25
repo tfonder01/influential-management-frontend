@@ -12,7 +12,7 @@ export interface ApiLocation {
   active: boolean
 }
 
-export type ApiRole = "OWNER" | "DIRECTOR" | "ASSISTANT_DIRECTOR"
+export type ApiRole = "OWNER" | "DIRECTOR" | "ASSISTANT_DIRECTOR" | "MAINTENANCE"
 export type OnboardingAudience = "OWNER" | "LOCATION_STAFF"
 export type OnboardingStatus = "NOT_STARTED" | "DISMISSED" | "COMPLETED"
 
@@ -33,7 +33,7 @@ export interface SessionUser {
   role: ApiRole
   operationalEmailNotificationsEnabled: boolean
   locations: ApiLocation[]
-  onboarding: OnboardingState
+  onboarding: OnboardingState | null
 }
 
 interface AuthResponse {
@@ -65,6 +65,7 @@ const API_URL = resolveApiUrl(
 )
 let accessToken: string | null = null
 let refreshInFlight: Promise<AuthResponse> | null = null
+const sessionListeners = new Set<(user: SessionUser) => void>()
 
 async function parseError(response: Response) {
   const body = await response.json().catch(() => null) as { message?: string; code?: string; requestId?: string } | null
@@ -104,6 +105,7 @@ async function refresh(): Promise<AuthResponse> {
       .then((response) => response.json() as Promise<AuthResponse>)
       .then((session) => {
         accessToken = session.accessToken
+        sessionListeners.forEach((listener) => listener(session.user))
         return session
       })
       .finally(() => { refreshInFlight = null })
@@ -159,6 +161,11 @@ export const apiClient = {
   },
 
   restoreSession: refresh,
+
+  onSessionRefresh(listener: (user: SessionUser) => void) {
+    sessionListeners.add(listener)
+    return () => { sessionListeners.delete(listener) }
+  },
 
   async logout() {
     try { await authRequest("/api/auth/logout", { method: "POST" }) }
